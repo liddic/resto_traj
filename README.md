@@ -2,9 +2,9 @@
 Code for proof-of-concept paper introducing microbiota-based 'rehabilitation trajectory assessments', with applications in monitoring and evaluating ecosystem restoration and recovery to reference-based targets.
 
 
-Code for the article: 
+**Contains code for the article:**
 
-"Next generation restoration metrics: Using soil eDNA bacterial community data to measure trajectories towards rehabilitation targets"
+*Next generation restoration metrics: Using soil eDNA bacterial community data to measure trajectories towards rehabilitation targets*
 
 by Craig Liddicoat, Siegfried L. Krauss, Andrew Bissett, Ryan J. Borrett, Luisa C. Ducki, Shawn D. Peddle, Paul Bullock, Mark P. Dobrowolski, Andrew Grigg, Mark Tibbett, Martin F. Breed
 
