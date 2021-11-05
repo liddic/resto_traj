@@ -53,10 +53,16 @@ library(sp); packageVersion("sp") #  '1.4.4'
 library(parallel); packageVersion("parallel") #  '4.0.3'
 library(doParallel); packageVersion("doParallel") #  ‘1.0.16’
 
+library(zCompositions); packageVersion("zCompositions") # '1.3.4'
+library(ALDEx2); packageVersion("ALDEx2") # '1.22.0'
+library(propr); packageVersion("propr") # '4.2.6'
+library(ggbiplot); packageVersion("ggbiplot") # '0.55'
+library(ggsignif); packageVersion("ggsignif") # ‘0.6.0’
+
 
 #########################
-##save.image("/Users/lidd0026/WORKSPACE/PROJ/Restoration-Trajectories/modelling/WORKSPACE-vFinal.RData")
-##load("/Users/lidd0026/WORKSPACE/PROJ/Restoration-Trajectories/modelling/WORKSPACE-vFinal.RData")
+##save.image("/Users/lidd0026/WORKSPACE/PROJ/Restoration-Trajectories/modelling/WORKSPACE-vFINAL.RData")
+##load("/Users/lidd0026/WORKSPACE/PROJ/Restoration-Trajectories/modelling/WORKSPACE-vFINAL.RData")
 #########################
 
 
@@ -556,7 +562,6 @@ length(taxa_names_ps) # 31746
 
 
 ## read rep seq fasta file
-#rep_seq <- read.fasta(file = paste0(datadir,"/mtbold/","Mt-Bold-AMD-16S-table-otus.fasta"), seqtype = "DNA", as.string = TRUE)
 length( rep_seq.alcoa ) # 36061
 rep_seq <- rep_seq.alcoa
 
@@ -747,6 +752,7 @@ phy_in
 # phy_tree()    Phylogenetic Tree:  [ 31746 tips and 31744 internal nodes ]:
 # taxa are rows
 
+sum(sample_sums(phy_in)) # 1772249
 
 str(rep_seq.alcoa)
 # Named chr [1:36061] "AAAGAACGCTGGCGGCATGCTTAACACATGCAAGTCGAACGAGTAGTAGCAATACTATTAGTGGCAGACGGGTGAGTAATACGTAGGAATCTCCCCTATAGTACGGAACAA"| __truncated__ ...
@@ -1390,22 +1396,26 @@ r1.ps@sam_data$group <- factor( r1.ps@sam_data$group,
 p <- plot_ordination(r1.ps, ord, type="samples", color="group")
 p
 
-temp <- r1.ps
+#temp <- r1.ps
+p_df <- p$data
+
 
 cols.group.alcoa # defined below
 #      2 yr      8 yr     14 yr     17 yr     25 yr     29 yr       Ref 
 # "#9e0142" "#d53e4f" "#fdae61" "#e6f598" "#abdda4" "#66c2a5" "#5e4fa2" 
 
-temp@sam_data$group
-temp@sam_data$group <- factor(temp@sam_data$group, 
+p_df$group
+p_df$group <- factor(p_df$group, 
                               levels = c("2","8","14","17","25","29","Ref"),
                               labels = c("2 yr","8 yr","14 yr","17 yr","25 yr","29 yr","Ref"),
                               ordered=TRUE)
 
 cols <- cols.group.alcoa
 
-p <- plot_ordination(temp, ord, type="samples", color="group") +
+p <- #plot_ordination(temp, ord, type="samples", color="group") +
+  ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
   theme_bw()+
+  geom_point()+
   scale_color_manual(values = cols, name = "Rehab\nage") +
   annotate(geom="text", x= -1.2, y= 1.3, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=1) +
   theme(
@@ -1413,9 +1423,10 @@ p <- plot_ordination(temp, ord, type="samples", color="group") +
     panel.grid.minor = element_blank())
 p
 
-grid.text(label = "(A)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+#grid.text(label = "(a)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(a)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
 
-dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-ASV-Bray-Curtis-NMDS-ordination.tiff"), width = 14, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-ASV-Bray-Curtis-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
 
 
 
@@ -2440,6 +2451,607 @@ ord_obj[["Alcoa-UnWtUniFrac-ASV-withTree"]] <- ord
 
 #-------------------------
 
+## Alcoa - with Tree - v. Centred log ratio > Aitchison (Euclidean dist.) - ASV-level
+#-------------------------
+
+phy_in <- phy.alcoa.withTree
+min(taxa_sums(phy_in)) # 2
+sum(sample_sums(phy_in)) # 1772249
+
+sample_sums(phy_in)
+min(sample_sums(phy_in)) # 17485
+
+### focus on 'compositional' approach to data analysis as per:
+### - Quinn et al 2019. A field guide for the compositional analysis of any-omics dataworkflow
+### - Gloor et al 2017. Microbiome datasets are compositional: and this is not optional
+### steps are: 1) Zero handling; 2) CLR normalization; 3) Aitchison distance calc; 4) PCA ordination
+
+
+# https://cdnsciencepub.com/doi/10.1139/cjm-2015-0821
+# Example of Gloor and Reid 2016 filter out rare taxa.
+# Such a step is likely to be prudent due to uncertain influence on results following 
+# zero-replacement and centred log ratio transformations, required for compositional data analysis.
+# Gloor and Reid 2016 included only those taxa that were at least 0.1% abundant in any sample.
+
+
+
+
+
+otus <- as.data.frame( phy_in@otu_table )
+dim(otus) # 31746    36
+otus[1:5,1:5]
+#       X39041 X39043 X39045 X39047 X39049
+# otu_1     12      2      2      0      0
+# otu_2      0      0      0      0      0
+# otu_3      1      1      5      0      0
+# otu_5      4      0      0      0      5
+# otu_4      0      1      0      0      0
+
+
+# however functions to be used expect rows as samples
+otus.tr <- t(otus)
+otus.tr[1:5,1:5]
+#        otu_1 otu_2 otu_3 otu_5 otu_4
+# X39041    12     0     1     4     0
+# X39043     2     0     1     0     1
+# X39045     2     0     5     0     0
+# X39047     0     0     0     0     0
+# X39049     0     0     0     5     0
+
+class(otus.tr)
+
+
+# only retain taxa that have non-zero counts in >= 10% of samples.
+
+checkNumZerosCol <- apply(otus.tr,2,function(x) sum(x==0))
+head(checkNumZerosCol)
+# otu_1 otu_2 otu_3 otu_5 otu_4 otu_6 
+# 13    29    24    30    25    28 
+
+length(checkNumZerosCol) # 31746
+dim(otus.tr) # 36 31746
+
+nrow(otus.tr) # 36
+
+sel <- which(checkNumZerosCol < 0.9*nrow(otus.tr)) # qty 25720 - taxa with non-zero counts in at least 10% of samples
+
+keep_taxa <- colnames(otus.tr)[sel]
+head(keep_taxa)
+
+phy_in <- prune_taxa(phy_in, taxa = keep_taxa)
+phy_in
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 25720 taxa and 36 samples ]:
+#   sample_data() Sample Data:        [ 36 samples by 70 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 25720 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 25720 tips and 25718 internal nodes ]:
+#   taxa are rows
+
+
+sum(sample_sums(phy_in)) # 1723759
+
+
+otus <- as.data.frame( phy_in@otu_table )
+otus.tr <- t(otus)
+
+
+
+## replace zeros with a small value
+## 'p-counts' option has the function return pseudo-counts instead of proportions
+
+set.seed(1234)
+otus.nozero <- cmultRepl(otus.tr, output = "p-counts")
+# No. corrected values:  115633 - for at least 10% non-zeros within samples
+dim(otus.tr) # 36 25720
+100 * 115633 / (36 * 25720) # 12.48844 % were zeros - for at least 10% non-zeros within samples
+
+getwd() # "/Users/lidd0026/WORKSPACE/PROJ/Restoration-Trajectories/modelling"
+
+saveRDS(object = otus.nozero, file = "alcoa-otus--atleast10percentnonzero.RDS")
+
+
+
+## Perform differential proportionality analysis using 'propr'
+## designed to identify feature coordination in compositional data
+# propr package tests for the presence of feature coordination across all samples
+# propr expects:
+# 'counts': the data matrix with rows as samples
+# 'metric': the proportionality metric to calculate
+# 'ivar': the log-ratio transform reference
+# uses package 'propr'
+
+# Quinn et al 2019, p7: "We interpret clr-based proportionality 
+# to signify a coordination that follows the general trend
+# of the data. In other words, these proportional genes move together
+# as individuals relative to how most genes move on average."
+
+
+
+# # # # # #
+# # # # # #
+
+## Rscript run on HPC
+
+# $cd /scratch/user/lidd0026/resto_traj
+# $sbatch run_perform_clr_transform.sh
+# $squeue
+# $sinfo -N -o "%N %C %e %m"
+
+
+## contents of 'run_perform_clr_transform.sh'
+
+# #!/bin/bash
+# 
+# #SBATCH --ntasks=1
+# #SBATCH --nodes=1
+# #SBATCH --time=2-0
+# #SBATCH --mem=128000M
+# #SBATCH --cpus-per-task=16
+# Rscript perform_clr_transform.R
+
+
+## contents of 'perform_clr_transform.R'
+
+# # set library path
+# .libPaths(new= "/home/lidd0026/miniconda3/lib/R/library")
+# 
+# # load required packages
+# library(propr)
+# 
+# # working directory
+# workdir <- "/scratch/user/lidd0026/resto_traj"
+# setwd(workdir)
+# 
+# otus.nozero <- readRDS(file = "alcoa-otus--atleast10percentnonzero.RDS")
+# 
+# set.seed(1234)
+# pr <- propr(counts = otus.nozero, metric = "rho", ivar = "clr")
+# 
+# saveRDS(object = pr@logratio, file = "alcoa-propr-centred-log-ratio-output-on-HPC-atleast10percentnonzero.RDS")
+#
+# ## no need to run this below
+#
+# # (detectCores())
+#
+# # # select a good cutoff for 'rho'
+# # # by permuting the FDR at various cutoffs
+# # # below we use [0, 0.05, ... , 0.95, 1]
+# # pr <- updateCutoffs(pr, cutoff = seq(0,1, .05), ncores = detectCores()-1)
+# # 
+# # saveRDS(object = pr, file = "alcoa-propr-object-on-HPC.RDS")
+# 
+# # END
+
+
+## copy result back from HPC
+
+pr_clr <- readRDS(file = file.path(workdir,"deepthoughtHPC/alcoa-propr-centred-log-ratio-output-on-HPC-atleast10percentnonzero.RDS"))
+str(pr_clr)
+# 'data.frame':	36 obs. of  25720 variables:
+
+pr_clr[1:5, 1:5]
+#              otu_1      otu_2      otu_3      otu_5       otu_4
+# X39041  3.17351227 -0.6857027  0.6886056  2.0749000  0.14464561
+# X39043  1.03139649 -0.8574041  0.3382493 -0.7461785  0.33824931
+# X39045  1.49195459 -0.6196444  2.4082453 -0.5084188 -0.23700237
+# X39047 -0.16242841 -0.9194703 -0.4945871 -0.8082447 -0.08912202
+# X39049 -0.02654707 -0.7320607 -0.3071775  1.9577872  0.09828764
+
+# check original format of ASV abundance table
+head(phy_in@otu_table)
+#   Taxa are rows
+
+
+head(t(pr_clr))
+
+phy.temp <- phy_in
+phy.temp@otu_table <- otu_table( t(pr_clr) , taxa_are_rows = TRUE)
+
+head(phy.temp@otu_table)
+phy.temp
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 25720 taxa and 36 samples ]:
+#   sample_data() Sample Data:        [ 36 samples by 70 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 25720 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 25720 tips and 25718 internal nodes ]:
+#   taxa are rows
+
+
+## CLR-transformed data does not need to be rarefied. However use r1.ps data object in code
+
+r1.ps <- phy.temp
+
+min(taxa_sums(r1.ps)) # -69.25437
+
+ntaxa(r1.ps) #  25720
+
+
+table(r1.ps@sam_data$`Date since change in Land Use`)
+# 1987 1991 1999 2002 2008 2014  N/A 
+#    3    3    3    3    3    3   18 
+
+
+
+otu_tab <- t( as(r1.ps@otu_table, "matrix"))
+
+
+## Use Aitchison distance, which is simply the Euclian distance between samples after clr transformation
+## Ref: Gloor et al 2017 - Microbiome datasets are compositional: And this is not optional
+
+dist.aitch <- vegan::vegdist(x = otu_tab, method = "euclidean")
+str(dist.aitch)
+dist.aitch <- as(dist.aitch, "matrix")
+# express as similarity
+
+max(dist.aitch) # 239.9968
+hist(dist.aitch)
+
+# divide by max value then subtract from 1 and multiply by 100%
+
+sim.aitch <- 100*(1 - dist.aitch/max(dist.aitch))
+hist(sim.aitch)
+
+# list all sample names
+colnames(sim.aitch)
+# [1] "X39041" "X39043" "X39045" "X39047" "X39049" "X39051" "X39053" "X39055" "X39057" "X39059" "X39061" "X39063"
+# [13] "X39065" "X39067" "X39069" "X39071" "X39073" "X39075" "X39077" "X39079" "X39081" "X39083" "X39085" "X39087"
+# [25] "X39089" "X39091" "X39093" "X39095" "X39097" "X39099" "X39161" "X39163" "X39165" "X39191" "X39193" "X39195"
+identical(colnames(sim.aitch),rownames(sim.aitch)) # TRUE
+
+## which are the reference sites?
+r1.ps@sam_data$`Location description`
+# [1] "karri 11"     "karri 11"     "mahogany 1"   "mahogany 1"   "coolabah 9"   "coolabah 9"   "karri 6"     
+# [8] "karri 6"      "casuarina 1"  "casuarina 1"  "marri 7/9"    "marri 7/9"    "1991-2/G4613" "1991-2/G4613"
+# [15] "F4615"        "F4615"        "F4601"        "F4601"        "F4525"        "F4525"        "1991-4"      
+# [22] "1991-4"       "E4424"        "E4424"        "2002-2"       "2002-2"       "1999-5"       "1999-5"      
+# [29] "1991-1"       "1991-1"       "1999-3"       "1999-3"       "2002-5"       "2002-5"       "1999-1"      
+# [36] "1999-1"  
+
+r1.ps@sam_data$Notes
+# [1] "post mine rehab"  "adjacent natural" "post mine rehab"  "adjacent natural" "post mine rehab" 
+# [6] "adjacent natural" "post mine rehab"  "adjacent natural" "post mine rehab"  "adjacent natural"
+# [11] "post mine rehab"  "adjacent natural" "post mine rehab"  "adjacent natural" "post mine rehab" 
+# [16] "adjacent natural" "post mine rehab"  "adjacent natural" "post mine rehab"  "adjacent natural"
+# [21] "post mine rehab"  "adjacent natural" "post mine rehab"  "adjacent natural" "post mine rehab" 
+# [26] "adjacent natural" "post mine rehab"  "adjacent natural" "post mine rehab"  "adjacent natural"
+# [31] "post mine rehab"  "adjacent natural" "post mine rehab"  "adjacent natural" "post mine rehab" 
+# [36] "adjacent natural"
+
+row.names(r1.ps@sam_data)
+# [1] "X39041" "X39043" "X39045" "X39047" "X39049" "X39051" "X39053" "X39055" "X39057" "X39059" "X39061" "X39063"
+# [13] "X39065" "X39067" "X39069" "X39071" "X39073" "X39075" "X39077" "X39079" "X39081" "X39083" "X39085" "X39087"
+# [25] "X39089" "X39091" "X39093" "X39095" "X39097" "X39099" "X39161" "X39163" "X39165" "X39191" "X39193" "X39195"
+
+sel <- which(r1.ps@sam_data$Notes == "adjacent natural") # qty 18
+
+( ref_sites <- row.names(r1.ps@sam_data)[sel] )
+# [1] "X39043" "X39047" "X39051" "X39055" "X39059" "X39063" "X39067" "X39071" "X39075" "X39079" "X39083" "X39087"
+# [13] "X39091" "X39095" "X39099" "X39163" "X39191" "X39195"
+
+df_in <- sim.aitch
+
+df_out <- data.frame(samp= rep( x = colnames(sim.aitch), each=length(ref_sites) ),
+                     compare_with = rep( x = ref_sites, times = length(colnames(sim.aitch))),
+                     site=NA,
+                     site_full_desc=NA,
+                     year_rehab=NA,
+                     similarity=NA
+)
+
+
+for (i in 1:dim(df_out)[1]) {
+  #i<-1
+  this_samp <- df_out$samp[i]
+  this_compare <- df_out$compare_with[i]
+  sel <- which( row.names(r1.ps@sam_data) == this_samp)
+  df_out$site[i] <- as.character(r1.ps@sam_data$`Location description`[sel])
+  df_out$site_full_desc[i] <- paste0(as.character(r1.ps@sam_data$`Location description`[sel]),
+                                     " (",as.character(r1.ps@sam_data$Notes[sel]),")")
+  df_out$year_rehab[i] <- as.character(r1.ps@sam_data$`Date since change in Land Use`[sel])
+  
+  row <- which(rownames(df_in)==this_samp)
+  col <- which(colnames(df_in)==this_compare)
+  
+  df_out$similarity[i] <- df_in[row,col]
+}
+
+
+dim(df_out) # 648  6
+
+# remove remnant self-comparisons
+sel <- which(df_out$samp==df_out$compare_with) # qty 18
+identical( which(df_out$samp==df_out$compare_with), which(df_out$similarity==100) ) # TRUE
+df_out <- df_out[-sel, ]
+dim(df_out) # 630  6
+
+unique(df_out$site)
+# [1] "karri 11"     "mahogany 1"   "coolabah 9"   "karri 6"      "casuarina 1"  "marri 7/9"    "1991-2/G4613"
+# [8] "F4615"        "F4601"        "F4525"        "1991-4"       "E4424"        "2002-2"       "1999-5"      
+# [15] "1991-1"       "1999-3"       "2002-5"       "1999-1" 
+
+unique(df_out$site_full_desc)
+# [1] "karri 11 (post mine rehab)"      "karri 11 (adjacent natural)"     "mahogany 1 (post mine rehab)"   
+# [4] "mahogany 1 (adjacent natural)"   "coolabah 9 (post mine rehab)"    "coolabah 9 (adjacent natural)"  
+# [7] "karri 6 (post mine rehab)"       "karri 6 (adjacent natural)"      "casuarina 1 (post mine rehab)"  
+# [10] "casuarina 1 (adjacent natural)"  "marri 7/9 (post mine rehab)"     "marri 7/9 (adjacent natural)"   
+# [13] "1991-2/G4613 (post mine rehab)"  "1991-2/G4613 (adjacent natural)" "F4615 (post mine rehab)"        
+# [16] "F4615 (adjacent natural)"        "F4601 (post mine rehab)"         "F4601 (adjacent natural)"       
+# [19] "F4525 (post mine rehab)"         "F4525 (adjacent natural)"        "1991-4 (post mine rehab)"       
+# [22] "1991-4 (adjacent natural)"       "E4424 (post mine rehab)"         "E4424 (adjacent natural)"       
+# [25] "2002-2 (post mine rehab)"        "2002-2 (adjacent natural)"       "1999-5 (post mine rehab)"       
+# [28] "1999-5 (adjacent natural)"       "1991-1 (post mine rehab)"        "1991-1 (adjacent natural)"      
+# [31] "1999-3 (post mine rehab)"        "1999-3 (adjacent natural)"       "2002-5 (post mine rehab)"       
+# [34] "2002-5 (adjacent natural)"       "1999-1 (post mine rehab)"        "1999-1 (adjacent natural)"
+
+length(df_out$site_full_desc) # 630
+
+sel <- which(df_out$samp %in% ref_sites) # qty 306
+unique( df_out$site_full_desc[sel] )
+# [1] "karri 11 (adjacent natural)"     "mahogany 1 (adjacent natural)"   "coolabah 9 (adjacent natural)"  
+# [4] "karri 6 (adjacent natural)"      "casuarina 1 (adjacent natural)"  "marri 7/9 (adjacent natural)"   
+# [7] "1991-2/G4613 (adjacent natural)" "F4615 (adjacent natural)"        "F4601 (adjacent natural)"       
+# [10] "F4525 (adjacent natural)"        "1991-4 (adjacent natural)"       "E4424 (adjacent natural)"       
+# [13] "2002-2 (adjacent natural)"       "1999-5 (adjacent natural)"       "1991-1 (adjacent natural)"      
+# [16] "1999-3 (adjacent natural)"       "2002-5 (adjacent natural)"       "1999-1 (adjacent natural)" 
+
+unique( df_out$site_full_desc[-sel] )
+# [1] "karri 11 (post mine rehab)"     "mahogany 1 (post mine rehab)"   "coolabah 9 (post mine rehab)"  
+# [4] "karri 6 (post mine rehab)"      "casuarina 1 (post mine rehab)"  "marri 7/9 (post mine rehab)"   
+# [7] "1991-2/G4613 (post mine rehab)" "F4615 (post mine rehab)"        "F4601 (post mine rehab)"       
+# [10] "F4525 (post mine rehab)"        "1991-4 (post mine rehab)"       "E4424 (post mine rehab)"       
+# [13] "2002-2 (post mine rehab)"       "1999-5 (post mine rehab)"       "1991-1 (post mine rehab)"      
+# [16] "1999-3 (post mine rehab)"       "2002-5 (post mine rehab)"       "1999-1 (post mine rehab)"
+
+
+df_out$group <- df_out$year_rehab
+unique(df_out$group) # "2014" "N/A"  "2008" "1991" "1987" "2002" "1999"
+df_out$group[sel] # all N/A
+df_out$group[sel] <- "Ref"
+unique(df_out$group) # "2014" "Ref"  "2008" "1991" "1987" "2002" "1999"
+df_out$group <- factor(df_out$group, 
+                       levels = c("2014","2008","2002","1999","1991","1987","Ref"),
+                       labels = c("2","8","14","17","25","29","Ref"), ordered=TRUE)
+# Alcoa (sampled in 2016; rehab 2-29 yr old)
+
+
+table(df_out$group)
+#  2   8  14  17  25  29 Ref 
+# 54  54  54  54  54  54 306 
+
+
+
+df_out$dist_measure <- "Aitchison"
+df_out$tax_level <- "At least 10% non-zero - ASV (with Tree)"
+df_out$study <- "Alcoa"
+df_out$corrected <- "no"   
+df_out$facet_x <- "At least 10% non-zero - Aitchison\nASV-level"
+
+
+# only make this once
+#df_results <- list()
+length(df_results) # 0
+names(df_results)
+
+df_results[["Alcoa-atleast10percentnonzero-Aitch-ASV-withTree"]] <- df_out
+#df_out <- df_results[[1]]
+
+
+p <- ggplot(data=df_out, aes(x=group, similarity)) + ggtitle("Aitchison Similarity") + #x=group
+  geom_boxplot(outlier.shape = NA)+
+  #geom_point() +
+  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  #geom_hline(yintercept = 70, color="red") +
+  theme_bw() +
+  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  labs(x = NULL, y = "Similarity to Reference (%)")
+p
+
+
+
+## Kruskal-Wallis multiple comparison test 
+## with post-hoc Dunn test
+
+str(df_out)
+# 'data.frame':	630 obs. of  12 variables:
+
+
+df_out$group
+
+
+# Kruskal-Wallis test
+
+kt <- kruskal.test( similarity ~ group, df_out) # Kruskal Wallis test
+kt
+# Kruskal-Wallis rank sum test
+# data:  similarity by group
+# Kruskal-Wallis chi-squared = 289.78, df = 6, p-value < 2.2e-16
+
+
+# library(FSA); packageVersion("FSA") # '0.8.30'
+# library(rcompanion); packageVersion("rcompanion") # '2.3.25'
+
+## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
+
+unique( df_out$group )
+# [1] 2   Ref 8   25  29  14  17 
+# Levels: 2 < 8 < 14 < 17 < 25 < 29 < Ref
+
+
+pt <- dunnTest( similarity ~ group, data = df_out,
+                method = "bonferroni" )
+pt
+
+pt$dtres
+pt <- pt$res
+pt
+
+cldList(comparison = pt$Comparison,
+        p.value    = pt$P.adj,
+        threshold  = 0.05)
+
+sig <- cldList(comparison = pt$Comparison,
+               p.value    = pt$P.adj,
+               threshold  = 0.05)
+
+str(sig)
+
+unique(sig$Group) # "14"  "17"  "2"   "25"  "29"  "8"   "Ref"
+
+sig$Group <- factor( sig$Group, levels=c("2","8","14","17","25","29","Ref"),
+                     ordered=TRUE )
+
+sig[ order(sig$Group), ]
+# Group Letter MonoLetter
+# 3     2      c         c 
+# 6     8     ac       a c 
+# 1    14      a       a   
+# 2    17      b        b  
+# 4    25     bd        b d
+# 5    29      d          d
+# 7   Ref      b        b 
+
+sig <- sig[ order(sig$Group), ]
+
+levels(sig$Group) # "2"   "8"   "14"  "17"  "25"  "29"  "Ref"
+
+## store annotations for later facet_grid ggplot
+names(df_out)
+# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"          "dist_measure"   "tax_level"     
+# [10] "study"          "corrected"      "facet_x"  
+
+anno <- data.frame(group=sig$Group,
+                   sig_letter = sig$Letter,
+                   similarity= c(26,28,30,44,43,40,44),
+                   dist_measure = rep( "Aitchison", times = dim(sig)[1]),
+                   tax_level  = rep( "At least 10% non-zero - ASV (with Tree)", times = dim(sig)[1]),
+                   study  = rep( "Alcoa", times = dim(sig)[1]),
+                   corrected = rep( "no" , times = dim(sig)[1]),
+                   facet_x  = rep( "At least 10% non-zero - Aitchison\nASV-level", times = dim(sig)[1])
+)
+
+# only make this once
+#df_anno <- list()
+length(df_anno) # 0
+names(df_anno)
+
+df_anno[["Alcoa-atleast10percentnonzero-Aitch-ASV-withTree"]] <- anno
+
+
+
+## Include significance letters in plot
+
+set.seed(1234)
+#p <- ggplot(data=df_out, aes(x=group, distance)) + # ggtitle("Alcoa - Bray Curtis Similarity") +
+p <- ggplot(data=df_out, aes(x=group, similarity)) + #ggtitle("Huntly - Bray Curtis Similarity") +
+  geom_boxplot(outlier.shape = NA)+
+  #geom_point() +
+  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  #geom_hline(yintercept = 70, color="red") +
+  theme_bw() +  # c(26,28,30,44,43,40,44)
+  annotate(geom="text", x= 1.2, y= 26, label = "c", hjust=0, vjust=0, size = 3 ) + # , col="blue") +
+  annotate(geom="text", x= 2.2, y= 28, label = "ac", hjust=0, vjust=0, size = 3 ) + #, col="blue") +
+  annotate(geom="text", x= 3.2, y= 30, label = "a", hjust=0, vjust=0, size = 3 ) + #, col="blue") +
+  annotate(geom="text", x= 4.2, y= 44, label = "b", hjust=0, vjust=0, size = 3 ) + #, col="blue") +
+  annotate(geom="text", x= 5.2, y= 43, label = "bd", hjust=0, vjust=0, size = 3 ) + #, col="blue") +
+  annotate(geom="text", x= 6.2, y= 40, label = "d", hjust=0, vjust=0, size = 3 ) + #, col="blue") +
+  annotate(geom="text", x= 7.2, y= 44, label = "b", hjust=0, vjust=0, size = 3 ) + #, col="blue") +
+  
+  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)")
+p
+
+#grid.text(label = "(B)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(d)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+
+dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-atleast10percentnonzero-Aitch-ASV-boxplots.tiff"), width = 10, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+
+
+
+## PCA plot ...
+
+clr.pca <- prcomp( dist.aitch)
+summary(clr.pca)
+
+#ggbiplot(clr.pca)
+
+PC1 <- clr.pca$rotation[,1]
+PC2 <- clr.pca$rotation[,2]
+
+percent_exp1 <- round( summary(clr.pca)$importance[ "Proportion of Variance" ,"PC1"]*100 , digits = 1 )
+percent_exp2 <- round( summary(clr.pca)$importance[ "Proportion of Variance" ,"PC2"]*100 , digits = 1 )
+
+
+
+## in this case r1.ps refers to CLR-transformed data
+
+r1.ps@sam_data$group <- r1.ps@sam_data$`Date since change in Land Use`
+sel <- which(r1.ps@sam_data$Notes == "adjacent natural") # qty 18
+r1.ps@sam_data$group[sel] <- "Ref"
+unique(r1.ps@sam_data$group)
+# "2014" "Ref"  "2008" "1991" "1987" "2002" "1999"
+
+r1.ps@sam_data$group <- factor( r1.ps@sam_data$group, 
+                                levels = c("2014","2008","2002","1999","1991","1987","Ref"),
+                                labels = c("2","8","14","17","25","29","Ref"), ordered=TRUE)
+# Alcoa (sampled in 2016; rehab 2-29 yr old)
+
+
+p_df <- data.frame(PC1=PC1, PC2=PC2,
+                   sample=r1.ps@sam_data$Sample_id,
+                   group=r1.ps@sam_data$group
+)
+
+
+
+cols.group.alcoa # defined below
+#      2 yr      8 yr     14 yr     17 yr     25 yr     29 yr       Ref 
+# "#9e0142" "#d53e4f" "#fdae61" "#e6f598" "#abdda4" "#66c2a5" "#5e4fa2" 
+
+p_df$group
+p_df$group <- factor(p_df$group,
+                     levels = c("2","8","14","17","25","29","Ref"),
+                     labels = c("2 yr","8 yr","14 yr","17 yr","25 yr","29 yr","Ref"),
+                     ordered=TRUE)
+
+cols <- cols.group.alcoa
+
+#p <- plot_ordination(temp, ord, type="samples", color="group") +
+p <- ggplot(data = p_df, aes(x = PC1, y = PC2, color=group)) +
+  theme_bw()+
+  geom_point()+
+  scale_color_manual(values = cols, name = "Rehab\nage") +
+  #annotate(geom="text", x= -1.2, y= 1.3, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=1) +
+  xlab( paste0("PC1 (",percent_exp1,"%)") ) + ylab( paste0("PC2 (",percent_exp2,"%)") )+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
+p
+
+#grid.text(label = "(b)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(b)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
+
+dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-atleast10percentnonzero-Aitch-ASV-PCA-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+
+
+
+str(p$data)
+
+# only make this once
+#ord_plots <- list()
+length(ord_plots) # 0
+names(ord_plots)
+ord_plots[["Alcoa-atleast10percentnonzero-Aitch-ASV-PCA-withTree"]] <- p
+
+
+#-------------------------
+
+
+
+
 
 
 
@@ -2482,7 +3094,7 @@ phy_in
 ( percent_reads_excluded <- 100*(1 - sum(sample_sums(phy_in))/pre_prune) ) # 42.31736 %
 
 
-sample_sums(phy_in)
+sum(sample_sums(phy_in)) # 1022280
 min(sample_sums(phy_in)) # 10378
 
 # rarefy #1
@@ -2850,11 +3462,11 @@ phy_in
 #   phy_tree()    Phylogenetic Tree:  [ 243 tips and 242 internal nodes ]:
 #   taxa are rows
 
-# % excluded reads due to unclassified GENERA
+# % excluded reads due to unclassified FAMILY
 ( percent_reads_excluded <- 100*(1 - sum(sample_sums(phy_in))/pre_prune) ) # 20.23254 %
 
 
-sample_sums(phy_in)
+sum( sample_sums(phy_in) ) # 1413678
 min(sample_sums(phy_in)) # 14109
 
 
@@ -3226,7 +3838,7 @@ phy_in
 ( percent_reads_excluded <- 100*(1 - sum(sample_sums(phy_in))/pre_prune) ) # 3.157457 %
 
 
-sample_sums(phy_in)
+sum( sample_sums(phy_in) ) # 1716291
 min(sample_sums(phy_in)) # 17299
 
 
@@ -3601,7 +4213,7 @@ phy_in
 ( percent_reads_excluded <- 100*(1 - sum(sample_sums(phy_in))/pre_prune) ) # 0.5679225 %
 
 
-sample_sums(phy_in)
+sum( sample_sums(phy_in) ) # 1762184
 min(sample_sums(phy_in)) # 17448
 
 
@@ -3988,7 +4600,7 @@ phy_in
 
 
 
-sample_sums(phy_in)
+sum(sample_sums(phy_in)) # 1772249
 min(sample_sums(phy_in)) # 17485
 
 
@@ -12462,6 +13074,7 @@ phy_in
 
 min(taxa_sums(phy_in)) # 18
 
+sum(sample_sums(phy_in)) # 1645918
 
 # rarefy #1
 seed <- 123
@@ -12840,6 +13453,7 @@ phy_in
 
 min(taxa_sums(phy_in)) # 178
 
+sum(sample_sums(phy_in)) # 868441
 
 # rarefy #1
 seed <- 123
@@ -13215,6 +13829,8 @@ phy_in
 # phy_tree()    Phylogenetic Tree: [ 72 tips and 71 internal nodes ]
 
 min(taxa_sums(phy_in)) # 1793
+
+sum(sample_sums(phy_in)) # 320029
 
 
 # rarefy #1
@@ -15229,7 +15845,6 @@ length(taxa_names_ps) # 33636
 
 
 ## read rep seq fasta file
-#rep_seq <- read.fasta(file = paste0(datadir,"/mtbold/","Mt-Bold-AMD-16S-table-otus.fasta"), seqtype = "DNA", as.string = TRUE)
 length( rep_seq.iluka_eneabba ) # 50845
 rep_seq <- rep_seq.iluka_eneabba
 
@@ -15415,6 +16030,15 @@ sum(sample_sums(phy_in)) # 2155211
 
 sample_sums(phy_in)
 min(sample_sums(phy_in)) # 10142
+
+phy_in
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 33636 taxa and 26 samples ]:
+#   sample_data() Sample Data:        [ 26 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 33636 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 33636 tips and 33634 internal nodes ]:
+#   taxa are rows
+
 
 # rarefy #1
 seed <- 123
@@ -15704,6 +16328,43 @@ p <- plot_ordination(r1.ps, ord, type="samples", color="group")
 p
 
 str(p$data)
+
+
+p_df <- p$data
+
+
+p_df$group
+p_df$group <- factor(p_df$group,
+                     levels = c("7", "10", "15", "19", "24", "30", "38", "Ref"),
+                     labels = c("7 yr", "10 yr", "15 yr", "19 yr", "24 yr", "30 yr", "38 yr", "Ref"),
+                     ordered=TRUE)
+
+cols.group.iluka
+#      7 yr     10 yr     15 yr     19 yr     24 yr     30 yr     38 yr       Ref 
+# "#d53e4f" "#f46d43" "#fdae61" "#e6f598" "#abdda4" "#66c2a5" "#3288bd" "#5e4fa2" 
+
+
+cols <- cols.group.iluka
+
+p <- #plot_ordination(temp, ord, type="samples", color="group") +
+  ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  theme_bw()+
+  geom_point()+
+  scale_color_manual(values = cols, name = "Rehab\nage") +
+  annotate(geom="text", x= 1.0, y= 0.7, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=1, vjust=1) +
+  #xlab( paste0("PC1 (",percent_exp1,"%)") ) + ylab( paste0("PC2 (",percent_exp2,"%)") )+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
+p
+
+#grid.text(label = "(c)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(c)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
+
+dev.print(tiff, file = paste0(workdir,"/plots/","Iluka-Eneabba-Bray-ASV-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+
+
+
 
 # only make this once
 #ord_plots <- list()
@@ -16652,8 +17313,7 @@ ord_obj[["Iluka-Eneabba-UnWtUniFrac-ASV-withTree"]] <- ord
 
 #-------------------------
 
-
-## Iluka-Eneabba - with Tree - Bray-Curtis - ASV-level - EXCLUDE youngest rehab_age
+## Iluka-Eneabba - with Tree - Centred log ratio > Aitchison (Euclidean dist.) - ASV-level - NOT EXCLUDING youngest rehab_age
 #-------------------------
 
 phy_in <- phy.iluka_eneabba.withTree
@@ -16663,34 +17323,283 @@ sum(sample_sums(phy_in)) # 2155211
 sample_sums(phy_in)
 min(sample_sums(phy_in)) # 10142
 
-# rarefy #1
-seed <- 123
-r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
-                           rngseed = seed, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
 
-min(taxa_sums(r1.ps)) # 1
-sample_sums(r1.ps) # all 10142
 
-ntaxa(r1.ps) #  27115
-sum(sample_sums(r1.ps)) # 263692
 
-r1.ps
+
+### focus on 'compositional' approach to data analysis as per:
+### - Quinn et al 2019. A field guide for the compositional analysis of any-omics dataworkflow
+### - Gloor et al 2017. Microbiome datasets are compositional: and this is not optional
+### steps are: 1) Zero handling; 2) CLR normalization; 3) Aitchison distance calc; 4) PCA ordination
+
+
+
+
+
+otus <- as.data.frame( phy_in@otu_table )
+dim(otus) # 33636    26    /     19020    26
+otus[1:5,1:5]
+# X138408 X138410 X138412 X138418 X138424
+# OTU_13          0       0       0       0       0
+# OTU_14          0       0       1       0       0
+# OTU_48062       0       0       0       0       0
+# OTU_16          0       0       0       0       0
+# OTU_18566       0       0       0       0       0
+
+head( row.names(otus) ) # "OTU_13"    "OTU_14"    "OTU_48062" "OTU_16"    "OTU_18566" "OTU_18570"
+
+# however functions to be used expect rows as samples
+otus.tr <- t(otus)
+otus.tr[1:5,1:5]
+#         OTU_13 OTU_14 OTU_48062 OTU_16 OTU_18566
+# X138408      0      0         0      0         0
+# X138410      0      0         0      0         0
+# X138412      0      1         0      0         0
+# X138418      0      0         0      0         0
+# X138424      0      0         0      0         0
+
+class(otus.tr)
+dim(otus.tr) # 26 33636
+
+## replace zeros with a small value
+## 'p-counts' option has the function return pseudo-counts instead of proportions
+
+# set.seed(1234)
+# otus.nozero <- cmultRepl(otus.tr, output = "p-counts")
+# # Error in if (any(X2[i, z] > colmins[z])) { : 
+# #     missing value where TRUE/FALSE needed
+
+## this issue discussed here:
+# https://stats.stackexchange.com/questions/477663/error-with-the-geometric-bayesian-multiplicative-replacement-of-count-zeros-with
+# The issue is that there are columns/variables (actually many) containing only 1 positive count across the samples.
+# The default GBM method does not work in this case because there is not enough information in those variables to compute the hyper-parameters involved.
+
+## code also from this stackexchange post
+# Check columns with only 1 non-zero in the given data set.
+# zeroCols <- which(checkNumZerosCol == (nrow(otus.tr) - 1))
+# otus.nozero <- cmultRepl(data_dist[,-cases]) # GBM imputation without them works ... this was an option, but throws out some taxa
+
+
+# only retain taxa that have non-zero counts in >= 10% of samples.
+
+checkNumZerosCol <- apply(otus.tr,2,function(x) sum(x==0))
+head(checkNumZerosCol)
+# OTU_13    OTU_14 OTU_48062    OTU_16 OTU_18566 OTU_18570 
+#     23        22        23        19        21        24 
+
+length(checkNumZerosCol) # 33636
+dim(otus.tr) # 26 33636
+
+nrow(otus.tr) # 26
+
+sel <- which(checkNumZerosCol < 0.9*nrow(otus.tr)) # qty 24117 - taxa with non-zero counts in at least 10% of samples
+#sel <- which(checkNumZerosCol < 0.75*nrow(otus.tr)) # qty 9158 - taxa with non-zero counts in at least 25% of samples
+#sel <- which(checkNumZerosCol < 0.5*nrow(otus.tr)) # qty 3178 - taxa with non-zero counts in at least 50% of samples
+#sel <- which(checkNumZerosCol < 0.25*nrow(otus.tr)) # qty 761 - taxa with non-zero counts in at least 75% of samples
+
+keep_taxa <- colnames(otus.tr)[sel]
+#otus.tr[ ,sel[1:5]]
+
+phy_in <- prune_taxa(phy_in, taxa = keep_taxa)
+phy_in
 # phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 27115 taxa and 26 samples ]
-# sample_data() Sample Data:       [ 26 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 27115 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 27115 tips and 27114 internal nodes ]
+# otu_table()   OTU Table:          [ 24117 taxa and 26 samples ]:
+#   sample_data() Sample Data:        [ 26 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 24117 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 24117 tips and 24116 internal nodes ]:
+#   taxa are rows
+
+sum(sample_sums(phy_in)) # 2042214
+
+otus <- as.data.frame( phy_in@otu_table )
+otus.tr <- t(otus)
+
+
+
+# https://academic.oup.com/nargab/article/2/2/lqaa040/5859926
+# Lovell et al 2020 - Counts: an outstanding challenge for log-ratio analysis of compositional data in the molecular biosciences
+# The large number of low and zero counts found in eDNA microbiota datasets expose limitations for zero-handling and log-ratio analysis that 
+# are emerging in the field of compositional data analysis of microbiome data (Lovel et al 2020). 
+# When counts are low and the range of counts is limited, pairwise measures of compositional association
+# (ie. proportionality) can be distorted in count (or so-called lattice) compositions, compared to continuous compositional data (Lovel et al 2020).
+# Zero replacement treatments (followed by log ratio analysis) may add spurious correlations (when the number of zeros is large)
+# between previously data-sparse taxa and samples, resulting from adding similar low values, shared across taxa 
+# and samples with zero counts. 
+
+# If the data are of compositional nature, 
+# neither the actual number of counts nor a particular representation is important, just
+# the ratios between the parts are relevant to be considered[*]. In practice, it is usually
+# the analyst’s decision whether exclusively the relative, rather than the absolute,
+# structure of the parts is of primary interest. (Martin-Fernandez et al 2015)
+# this implies that data for 3 taxa with counts 1,2,3 are equivalent to 100,200,300.
+
+
+set.seed(1234)
+otus.nozero <- cmultRepl(otus.tr, output = "p-counts")
+# No. corrected values:  127114 - for at least 10% non-zeros within samples
+dim(otus.tr) # 26 24117
+100 * 127114 / (26 * 24117) # 20.27201 % were zeros - for at least 10% non-zeros within samples
+
+
+
+otus.nozero[1:5,1:5]
+
+
+class(otus.nozero) # "data.frame"
+
+## Perform differential proportionality analysis using 'propr'
+## designed to identify feature coordination in compositional data
+# propr package tests for the presence of feature coordination across all samples
+# propr expects:
+# 'counts': the data matrix with rows as samples
+# 'metric': the proportionality metric to calculate
+# 'ivar': the log-ratio transform reference
+# uses package 'propr'
+
+# Quinn et al 2019, p7: "We interpret clr-based proportionality 
+# to signify a coordination that follows the general trend
+# of the data. In other words, these proportional genes move together
+# as individuals relative to how most genes move on average."
+
+dim(otus.nozero) #  26 33636
+
+# set.seed(123)
+# pr <- propr(counts = otus.nozero,
+#             metric = "rho",
+#             ivar = "clr")
+
+# Alert: Saving log-ratio transformed counts to @logratio.
+# Alert: Fixing permutations to active random seed.
+# Error: vector memory exhausted (limit reached?)
+
+# https://stackoverflow.com/questions/51295402/r-on-macos-error-vector-memory-exhausted-limit-reached
+
+## https://cran.r-project.org/web/packages/propr/vignettes/a_introduction.html
+## NOTE re memory issues...(!!)
+# High-throughput genomic sequencing has the ability to measure tens of thousands 
+# of features for each subject. Since calculating proportionality generates a matrix sized 
+# D-squared, this method uses a lot of RAM when applied to real biological data sets. 
+# To address this, propr harnesses the power of C++ (via the Rcpp package) to minimize 
+# the run-time and RAM overhead. Below, we provide a table that estimates the approximate 
+# amount of RAM needed to render a proportionality matrix based on the number of features 
+# studied. The user should account for up to 25% more RAM for subsequent [ indexing.
+
+getwd() # "/Users/lidd0026/WORKSPACE/PROJ/Restoration-Trajectories/modelling"
+
+saveRDS(object = otus.nozero, file = "iluka-otus-nozero-atleast10percentnonzero.RDS")
+
+# # # # # #
+# # # # # #
+
+## Rscript run on HPC
+
+# $cd /scratch/user/lidd0026/resto_traj
+# $sbatch run_perform_clr_transform.sh
+# $squeue
+# $sinfo -N -o "%N %C %e %m"
+
+
+## contents of 'run_perform_clr_transform.sh'
+
+# #!/bin/bash
+# 
+# #SBATCH --ntasks=1
+# #SBATCH --nodes=1
+# #SBATCH --time=2-0
+# #SBATCH --mem=128000M
+# #SBATCH --cpus-per-task=16
+# Rscript perform_clr_transform.R
+
+
+## contents of 'perform_clr_transform.R'
+
+# # set library path
+# .libPaths(new= "/home/lidd0026/miniconda3/lib/R/library")
+# 
+# # load required packages
+# library(propr)
+# 
+# # working directory
+# workdir <- "/scratch/user/lidd0026/resto_traj"
+# setwd(workdir)
+# 
+# otus.nozero <- readRDS(file = "iluka-otus-nozero-atleast10percentnonzero.RDS")
+#
+# set.seed(1234)
+# pr <- propr(counts = otus.nozero, metric = "rho", ivar = "clr")
+# 
+# saveRDS(object = pr@logratio, file = "iluka-propr-centred-log-ratio-output-on-HPC-atleast10percentnonzero.RDS")
+#
+# # END
+
+
+## copy result back from HPC
+pr_clr <- readRDS(file = file.path(workdir,"deepthoughtHPC/iluka-propr-centred-log-ratio-output-on-HPC-atleast10percentnonzero.RDS"))
+
+
+str(pr_clr)
+# 'data.frame':	26 obs. of  24117 variables:
+
+pr_clr[1:5, 1:5]
+# taxa are cols
+
+# check original format of ASV abundance table
+head(phy_in@otu_table)
+#   Taxa are rows
+
+head(t(pr_clr))
+
+phy.temp <- phy_in
+phy.temp@otu_table <- otu_table( t(pr_clr) , taxa_are_rows = TRUE)
+
+head(phy.temp@otu_table)
+phy.temp
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 24117 taxa and 26 samples ]:
+#   sample_data() Sample Data:        [ 26 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 24117 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 24117 tips and 24116 internal nodes ]:
+#   taxa are rows
+
+
+## CLR-transformed data does not need to be rarefied. However use r1.ps data object in code
+
+r1.ps <- phy.temp
+
+min(taxa_sums(r1.ps)) # -56.60202
+
+ntaxa(r1.ps) #  24117
+
+table(r1.ps@sam_data$year.of.rehab.or.ref)
+# 1981 1989 1995 2000 2004 2009 2012  REF 
+#    3    2    3    2    3    2    2    9 
 
 head(r1.ps@otu_table)
+# Taxa are rows
+
+
 otu_tab <- t( as(r1.ps@otu_table, "matrix"))
 
-dist.bray <- vegan::vegdist(x = otu_tab, method = "bray")
-str(dist.bray)
-dist.bray <- as(dist.bray, "matrix")
+## Use Aitchison distance, which is simply the Euclian distance between samples after clr transformation
+## Ref: Gloor et al 2017 - Microbiome datasets are compositional: And this is not optional
+
+dist.aitch <- vegan::vegdist(x = otu_tab, method = "euclidean")
+str(dist.aitch)
+dist.aitch <- as(dist.aitch, "matrix")
 # express as similarity
-sim.bray <- 100*(1 - dist.bray)
+
+max(dist.aitch) # 261.1473
+hist(dist.aitch)
+
+# divide by max value then subtract from 1 and multiply by 100%
+
+sim.aitch <- 100*(1 - dist.aitch/max(dist.aitch))
+hist(sim.aitch)
+
+
+
 # list all sample names
-colnames(sim.bray)
+colnames(sim.aitch)
 # [1] "X138408" "X138410" "X138412" "X138418" "X138424" "X138426" "X138428" "X138430" "X138432" "X138434" "X138436" "X138438"
 # [13] "X138444" "X138448" "X138450" "X138452" "X138454" "X138456" "X138458" "X138460" "X138462" "X138464" "X138466" "X138468"
 # [25] "X138470" "X138472"
@@ -16702,16 +17611,12 @@ r1.ps@sam_data$year.of.rehab.or.ref
 # [1] "REF"  "REF"  "REF"  "1989" "1995" "1995" "1981" "REF"  "REF"  "1981" "1981" "REF"  "REF"  "2012" "2012" "REF"  "REF" 
 # [18] "2009" "2004" "2009" "2004" "2000" "2000" "1995" "2004" "1989"
 
-table(r1.ps@sam_data$year.of.rehab.or.ref)
-# 1981 1989 1995 2000 2004 2009 2012  REF 
-#    3    2    3    2    3    2    2    9 
-
 row.names(r1.ps@sam_data)
 # [1] "X138408" "X138410" "X138412" "X138418" "X138424" "X138426" "X138428" "X138430" "X138432" "X138434" "X138436" "X138438"
 # [13] "X138444" "X138448" "X138450" "X138452" "X138454" "X138456" "X138458" "X138460" "X138462" "X138464" "X138466" "X138468"
 # [25] "X138470" "X138472"
 
-identical(colnames(sim.bray), row.names(r1.ps@sam_data)) # TRUE
+identical(colnames(sim.aitch), row.names(r1.ps@sam_data)) # TRUE
 
 sel <- which(r1.ps@sam_data$year.of.rehab.or.ref == "REF") # qty 9
 
@@ -16719,11 +17624,10 @@ sel <- which(r1.ps@sam_data$year.of.rehab.or.ref == "REF") # qty 9
 
 # "X138408" "X138410" "X138412" "X138430" "X138432" "X138438" "X138444" "X138452" "X138454"
 
-df_in <- sim.bray
+df_in <- sim.aitch
 
-#df_out <- data.frame(samp=colnames(ps.sim.bray))
-df_out <- data.frame(samp= rep( x = colnames(sim.bray), each=length(ref_sites) ),
-                     compare_with = rep( x = ref_sites, times = length(colnames(sim.bray))),
+df_out <- data.frame(samp= rep( x = colnames(sim.aitch), each=length(ref_sites) ),
+                     compare_with = rep( x = ref_sites, times = length(colnames(sim.aitch))),
                      #site=NA,
                      #site_full_desc=NA,
                      year_rehab=NA,
@@ -16760,6 +17664,7 @@ dim(df_out) # 225   4
 
 
 unique(df_out$year_rehab)
+### "REF"  "1989" "1995" "1981" "2009" "2004" "2000" # 7 yr old sites already removed
 # "REF"  "1989" "1995" "1981" "2012" "2009" "2004" "2000"
 
 
@@ -16771,23 +17676,18 @@ unique(df_out$group) # "REF"  "1989" "1995" "1981" "2012" "2009" "2004" "2000"
 
 class(df_out$group) # "character"
 
-dim(df_out) # 225   5
+dim(df_out) # 225  5
 
-## exclude youngest rehab_age group
-sel <- which(df_out$group == "2012") # qty 18
-df_out <- df_out[-sel, ]
-dim(df_out) # 207   5
-
-unique(df_out$group) # "REF"  "1989" "1995" "1981" "2009" "2004" "2000"
 
 df_out$group <- factor(df_out$group, 
-                       levels = c("2009","2004","2000","1995","1989","1981","REF"),
-                       labels = c("10", "15", "19", "24", "30", "38", "Ref"), ordered=TRUE)
+                       levels = c("2012","2009","2004","2000","1995","1989","1981","REF"),
+                       labels = c("7","10", "15", "19", "24", "30", "38", "Ref"), ordered=TRUE)
 # Iluka-Eneabba (sampled in 2019; rehab 10-38 yr old) - if exclude 7-year rehab
+# Iluka-Eneabba (sampled in 2019; rehab 7-38 yr old) - if INCLUDE youngest 7-year rehab
 
 table(df_out$group)
-# 10  15  19  24  30  38 Ref 
-# 18  27  18  27  18  27  72 
+#  7 10  15  19  24  30  38 Ref 
+# 18 18  27  18  27  18  27  72 
 
 
 df_out$group <- factor(df_out$group, levels=as.character(c(0:40,"Ref")),ordered=TRUE)
@@ -16795,11 +17695,12 @@ df_out$group
 
 
 
-df_out$dist_measure <- "Bray-Curtis"
-df_out$tax_level <- "ASV (with Tree)"
-df_out$study <- "Iluka-Eneabba\n(exclude 7-year rehab)"
+df_out$dist_measure <- "Aitchison"
+df_out$tax_level <- "At least 10% non-zero - ASV (with Tree)"
+#df_out$study <- "Iluka-Eneabba\n(exclude 7-year rehab)"
+df_out$study <- "Iluka-Eneabba"
 df_out$corrected <- "no"  
-df_out$facet_x <- "Bray-Curtis\nASV-level"
+df_out$facet_x <- "At least 10% non-zero - Aitchison\nASV-level"
 
 
 # only make this once
@@ -16807,12 +17708,13 @@ df_out$facet_x <- "Bray-Curtis\nASV-level"
 length(df_results) #
 names(df_results) #
 
-df_results[["Iluka-Eneabba-Bray-ASV-withTree-exclude7yr"]] <- df_out
+#df_results[["Iluka-Eneabba-Aitch-ASV-withTree-exclude7yr"]] <- df_out
+df_results[["Iluka-Eneabba-atleast10percentnonzero-Aitch-ASV-withTree"]] <- df_out
 #df_out <- df_results[[1]]
 
 
 
-p <- ggplot(data=df_out, aes(x=group, similarity)) + ggtitle("Bray Curtis Similarity") + #x=group
+p <- ggplot(data=df_out, aes(x=group, similarity)) + ggtitle("Aitchison Similarity") + #x=group
   geom_boxplot(outlier.shape = NA)+
   #geom_point() +
   geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
@@ -16831,7 +17733,7 @@ p
 ## with post-hoc Dunn test
 
 str(df_out)
-# 'data.frame':	207 obs. of  10 variables:
+# 'data.frame':	225 obs. of  10 variables:
 
 
 # Kruskal-Wallis test
@@ -16839,21 +17741,23 @@ kt <- kruskal.test( similarity ~ group, df_out) # Kruskal Wallis test
 kt
 # Kruskal-Wallis rank sum test
 # data:  similarity by group
-# Kruskal-Wallis chi-squared = 125.71, df = 6, p-value < 2.2e-16
+# Kruskal-Wallis chi-squared = 142.76, df = 7, p-value < 2.2e-16
 
 
 ## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
 
 unique(df_out$group)
-# Ref 30  24  38  10  15  19 
+# Ref 30  24  38  7  10  15  19 
 
 # post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
 temp <- df_out
 temp$group <- as.character(temp$group)
-temp$group <- factor(temp$group, levels = c("10","15","19","24","30","38","Ref"),
-                     labels = c("ten","15","19","24","thirty","38","Ref"),ordered = TRUE)
+# temp$group <- factor(temp$group, levels = c("10","15","19","24","30","38","Ref"),
+#                      labels = c("ten","15","19","24","thirty","38","Ref"),ordered = TRUE)
+temp$group <- factor(temp$group, levels = c("7","10","15","19","24","30","38","Ref"),
+                     labels = c("7","ten","15","19","24","thirty","38","Ref"),ordered = TRUE)
 
- 
+
 pt <- dunnTest( similarity ~ group, data = temp,
                 method = "bonferroni" )
 pt
@@ -16874,25 +17778,29 @@ sig <- cldList(comparison = pt$Comparison,
 
 str(sig)
 
-unique(sig$Group) # "15"     "19"     "24"     "38"       "Ref"    "ten"    "thirty"
+unique(sig$Group) # "15"     "19"     "24"     "38"   "7    "Ref"    "ten"    "thirty"
 
-sig$Group <- factor( sig$Group, levels=c("ten","15","19","24","thirty","38","Ref"),
-                     labels = c("10","15","19","24","30","38","Ref"),
+# sig$Group <- factor( sig$Group, levels=c("ten","15","19","24","thirty","38","Ref"),
+#                      labels = c("10","15","19","24","30","38","Ref"),
+#                      ordered=TRUE )
+sig$Group <- factor( sig$Group, levels=c("7","ten","15","19","24","thirty","38","Ref"),
+                     labels = c("7","10","15","19","24","30","38","Ref"),
                      ordered=TRUE )
 
 sig[ order(sig$Group), ]
 # Group Letter MonoLetter
-# 6    10      a       a   
-# 1    15     ab       ab  
-# 2    19    abc       abc 
-# 3    24     ab       ab  
-# 7    30    bcd        bcd
-# 4    38     cd         cd
-# 5   Ref      d          d
+# 5     7      b          b
+# 7    10      a         a 
+# 1    15      a         a 
+# 2    19      a         a 
+# 3    24      a         a 
+# 8    30      a         a 
+# 4    38      b          b
+# 6   Ref      b          b
 
 sig <- sig[ order(sig$Group), ]
 
-levels(sig$Group) #  "10"  "15"  "19"  "24"  "30"  "38"  "Ref"
+levels(sig$Group) # "7"  "10"  "15"  "19"  "24"  "30"  "38"  "Ref"
 
 ## store annotations for later facet_grid ggplot
 names(df_out)
@@ -16901,12 +17809,12 @@ names(df_out)
 
 anno <- data.frame(group=sig$Group,
                    sig_letter = sig$Letter,
-                   similarity= c(25,28,30,32,34,35,41.5),
-                   dist_measure = rep( "Bray-Curtis", times = dim(sig)[1]),
-                   tax_level  = rep( "ASV (with tree)", times = dim(sig)[1]),
-                   study  = rep( "Iluka-Eneabba\n(exclude 7-year rehab)", times = dim(sig)[1]),
+                   similarity= c(26,20,16,15,16,18,26,31),
+                   dist_measure = rep( "Aitchison", times = dim(sig)[1]),
+                   tax_level  = rep( "At least 10% non-zero - ASV (with tree)", times = dim(sig)[1]),
+                   study  = rep( "Iluka-Eneabba", times = dim(sig)[1]),
                    corrected = rep( "no" , times = dim(sig)[1]),
-                   facet_x  = rep( "Bray-Curtis\nASV-level", times = dim(sig)[1])
+                   facet_x  = rep( "At least 10% non-zero - Aitchison\nASV-level", times = dim(sig)[1])
 )
 
 # only make this once
@@ -16914,118 +17822,27 @@ anno <- data.frame(group=sig$Group,
 length(df_anno) #
 names(df_anno) 
 
-df_anno[["Iluka-Eneabba-Bray-ASV-withTree-exclude7yr"]] <- anno
-
-
-#-------------------------
-
-## Iluka-Eneabba - with Tree - Jaccard - ASV-level - EXCLUDE youngest rehab_age
-#-------------------------
-phy_in <- phy.iluka_eneabba.withTree
-min(taxa_sums(phy_in)) # 1
-sum(sample_sums(phy_in)) # 2155211
-
-sample_sums(phy_in)
-min(sample_sums(phy_in)) # 10142
-
-# rarefy #1
-seed <- 123
-r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
-                           rngseed = seed, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
-
-min(taxa_sums(r1.ps)) # 1
-sample_sums(r1.ps) # all 10142
-
-ntaxa(r1.ps) #  27115
-sum(sample_sums(r1.ps)) # 263692
-
-r1.ps
-# phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 27115 taxa and 26 samples ]
-# sample_data() Sample Data:       [ 26 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 27115 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 27115 tips and 27114 internal nodes ]
-
-head(r1.ps@otu_table)
-otu_tab <- t( as(r1.ps@otu_table, "matrix"))
-
-dist.jacc <- vegan::vegdist(x = otu_tab, method = "jaccard", binary = TRUE)
-str(dist.jacc)
-dist.jacc <- as(dist.jacc, "matrix")
-# express as similarity
-sim.jacc <- 100*(1 - dist.jacc)
-# list all sample names
-colnames(sim.jacc)
-# [1] "X138408" "X138410" "X138412" "X138418" "X138424" "X138426" "X138428" "X138430" "X138432" "X138434" "X138436" "X138438"
-# [13] "X138444" "X138448" "X138450" "X138452" "X138454" "X138456" "X138458" "X138460" "X138462" "X138464" "X138466" "X138468"
-# [25] "X138470" "X138472"
-
-identical(colnames(sim.jacc),rownames(sim.jacc)) # TRUE
-
-## which are the reference sites?
-r1.ps@sam_data$year.of.rehab.or.ref
-# [1] "REF"  "REF"  "REF"  "1989" "1995" "1995" "1981" "REF"  "REF"  "1981" "1981" "REF"  "REF"  "2012" "2012" "REF"  "REF" 
-# [18] "2009" "2004" "2009" "2004" "2000" "2000" "1995" "2004" "1989"
-
-table(r1.ps@sam_data$year.of.rehab.or.ref)
-# 1981 1989 1995 2000 2004 2009 2012  REF 
-#    3    2    3    2    3    2    2    9 
-
-row.names(r1.ps@sam_data)
-# [1] "X138408" "X138410" "X138412" "X138418" "X138424" "X138426" "X138428" "X138430" "X138432" "X138434" "X138436" "X138438"
-# [13] "X138444" "X138448" "X138450" "X138452" "X138454" "X138456" "X138458" "X138460" "X138462" "X138464" "X138466" "X138468"
-# [25] "X138470" "X138472"
-
-identical(colnames(sim.jacc), row.names(r1.ps@sam_data)) # TRUE
-
-sel <- which(r1.ps@sam_data$year.of.rehab.or.ref == "REF") # qty 9
-
-( ref_sites <- row.names(r1.ps@sam_data)[sel] )
-
-# "X138408" "X138410" "X138412" "X138430" "X138432" "X138438" "X138444" "X138452" "X138454"
-
-df_in <- sim.jacc
-
-df_out <- data.frame(samp= rep( x = colnames(sim.jacc), each=length(ref_sites) ),
-                     compare_with = rep( x = ref_sites, times = length(colnames(sim.jacc))),
-                     #site=NA,
-                     #site_full_desc=NA,
-                     year_rehab=NA,
-                     similarity=NA
-)
+df_anno[["Iluka-Eneabba-atleast10percentnonzero-Aitch-ASV-withTree"]] <- anno
 
 
 
-for (i in 1:dim(df_out)[1]) {
-  #i<-1
-  this_samp <- df_out$samp[i]
-  this_compare <- df_out$compare_with[i]
-  sel <- which( row.names(r1.ps@sam_data) == this_samp)
-  #df_out$site[i] <- as.character(r1.ps@sam_data$`Location description`[sel])
-  #df_out$site_full_desc[i] <- paste0(as.character(r1.ps@sam_data$`Location description`[sel]),
-  #                                   " (",as.character(r1.ps@sam_data$Notes[sel]),")")
-  #df_out$year_rehab[i] <- as.character(r1.ps@sam_data$`Date since change in Land Use`[sel])
-  df_out$year_rehab[i] <- as.character(r1.ps@sam_data$year.of.rehab.or.ref[sel])
-  
-  row <- which(rownames(df_in)==this_samp)
-  col <- which(colnames(df_in)==this_compare)
-  
-  df_out$similarity[i] <- df_in[row,col]
-  
-}
 
-dim(df_out) # 234   4
+## PCA plot ...
 
-# remove remnant self-comparisons
-sel <- which(df_out$samp==df_out$compare_with) # qty 9
-identical( which(df_out$samp==df_out$compare_with), which(df_out$similarity==100) ) # TRUE
-df_out <- df_out[-sel, ]
-dim(df_out) # 225   4
+clr.pca <- prcomp( dist.aitch)
+summary(clr.pca)
+
+ggbiplot(clr.pca)
+
+PC1 <- clr.pca$rotation[,1]
+PC2 <- clr.pca$rotation[,2]
+
+percent_exp1 <- round( summary(clr.pca)$importance[ "Proportion of Variance" ,"PC1"]*100 , digits = 1 )
+percent_exp2 <- round( summary(clr.pca)$importance[ "Proportion of Variance" ,"PC2"]*100 , digits = 1 )
 
 
-unique(df_out$year_rehab)
-# "REF"  "1989" "1995" "1981" "2012" "2009" "2004" "2000"
 
+## in this case r1.ps refers to CLR-transformed data
 
 df_out$group <- df_out$year_rehab
 unique(df_out$group) # "REF"  "1989" "1995" "1981" "2012" "2009" "2004" "2000"
@@ -17033,153 +17850,66 @@ unique(df_out$group) # "REF"  "1989" "1995" "1981" "2012" "2009" "2004" "2000"
 2019 - c(2012,2009,2004,2000,1995,1989,1981)
 # 7 10 15 19 24 30 38
 
-## exclude youngest rehab_age 7 year group
-sel <- which(df_out$group == "2012") # qty 18
-df_out <- df_out[-sel, ]
-dim(df_out) # 207   5
 
-unique(df_out$group) # "REF"  "1989" "1995" "1981" "2009" "2004" "2000"
+r1.ps@sam_data$group <- r1.ps@sam_data$year.of.rehab.or.ref
+unique(r1.ps@sam_data$group)
+# "REF"  "1989" "1995" "1981" "2012" "2009" "2004" "2000"
 
-df_out$group <- factor(df_out$group, 
-                       levels = c("2009","2004","2000","1995","1989","1981","REF"),
-                       labels = c("10", "15", "19", "24", "30", "38", "Ref"), ordered=TRUE)
-# Iluka-Eneabba (sampled in 2019; rehab 10-38 yr old) - with exclusion of 7 yr rehab_age
-
-table(df_out$group)
-# 10  15  19  24  30  38 Ref 
-# 18  27  18  27  18  27  72 
+r1.ps@sam_data$group <- factor( r1.ps@sam_data$group, 
+                                levels = c("2012","2009","2004","2000","1995","1989","1981","REF"),
+                                labels = c("7","10", "15", "19", "24", "30", "38", "Ref"), ordered=TRUE)
+# Iluka-Eneabba (sampled in 2019; rehab 7-38 yr old) - if INCLUDE youngest 7-year rehab
 
 
-# df_out$group <- factor(df_out$group, levels=as.character(c(0:40,"Ref")),ordered=TRUE)
-# df_out$group
-
-dim(df_out) # 207 4
-
-
-df_out$dist_measure <- "Jaccard"
-df_out$tax_level <- "ASV (with tree)"
-df_out$study <- "Iluka-Eneabba\n(exclude 7-year rehab)"
-df_out$corrected <- "no"  
-df_out$facet_x <- "Jaccard\nASV-level"
-
-
-# only make this once
-#df_results <- list()
-length(df_results) #
-names(df_results) #
-
-df_results[["Iluka-Eneabba-Jaccard-ASV-withTree-exclude7yr"]] <- df_out
-
-
-
-
-p <- ggplot(data=df_out, aes(x=group, similarity)) + ggtitle("Jaccard Similarity") + #x=group
-  geom_boxplot(outlier.shape = NA)+
-  #geom_point() +
-  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
-  #geom_hline(yintercept = 70, color="red") +
-  theme_bw() +
-  theme(
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()) +
-  labs(x = NULL, y = "Similarity to Remnants (%)")
-p
-
-
-
-
-## Kruskal-Wallis multiple comparison test 
-## with post-hoc Dunn test
-
-str(df_out)
-# 'data.frame':	207 obs. of  10 variables:
-
-
-# Kruskal-Wallis test
-kt <- kruskal.test( similarity ~ group, df_out) # Kruskal Wallis test
-kt
-# Kruskal-Wallis rank sum test
-# data:  similarity by group
-# Kruskal-Wallis chi-squared = 141.17, df = 6, p-value < 2.2e-16
-
-
-## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
-
-unique(df_out$group)
-# Ref 30  24  38  10  15  19 
-
-# post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
-temp <- df_out
-temp$group <- as.character(temp$group)
-temp$group <- factor(temp$group, levels = c("10","15","19","24","30","38","Ref"),
-                     labels = c("ten","15","19","24","thirty","38","Ref"),ordered = TRUE)
-
- 
-pt <- dunnTest( similarity ~ group, data = temp,
-                method = "bonferroni" )
-pt
-
-
-
-pt$dtres
-pt <- pt$res
-pt
-
-cldList(comparison = pt$Comparison,
-        p.value    = pt$P.adj,
-        threshold  = 0.05)
-
-sig <- cldList(comparison = pt$Comparison,
-               p.value    = pt$P.adj,
-               threshold  = 0.05)
-
-str(sig)
-
-unique(sig$Group) # "15"     "19"     "24"     "38"      "Ref"    "ten"    "thirty"
-
-sig$Group <- factor( sig$Group, levels=c("ten","15","19","24","thirty","38","Ref"),
-                     labels = c("10","15","19","24","30","38","Ref"),
-                     ordered=TRUE )
-
-sig[ order(sig$Group), ]
-# Group Letter MonoLetter
-# 6    10      b        b  
-# 1    15     ab       ab  
-# 2    19      a       a   
-# 3    24     ab       ab  
-# 7    30     ad       a  d
-# 4    38     cd         cd
-# 5   Ref      c         c 
-
-sig <- sig[ order(sig$Group), ]
-
-levels(sig$Group) # "10"  "15"  "19"  "24"  "30"  "38"  "Ref"
-
-## store annotations for later facet_grid ggplot
-names(df_out)
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"          "dist_measure"   "tax_level"     
-# [10] "study"          "corrected"      "facet_x"  
-
-anno <- data.frame(group=sig$Group,
-                   sig_letter = sig$Letter,
-                   similarity= c(14,17.5,18,18,20,24,25),
-                   dist_measure = rep( "Jaccard", times = dim(sig)[1]),
-                   tax_level  = rep( "ASV (with tree)", times = dim(sig)[1]),
-                   study  = rep( "Iluka-Eneabba\n(exclude 7-year rehab)", times = dim(sig)[1]),
-                   corrected = rep( "no" , times = dim(sig)[1]),
-                   facet_x  = rep( "Jaccard\nASV-level", times = dim(sig)[1])
+p_df <- data.frame(PC1=PC1, PC2=PC2,
+                   sample=r1.ps@sam_data$Sample_ID,
+                   group=r1.ps@sam_data$group
 )
 
-# only make this once
-#df_anno <- list()
-length(df_anno) # 
-names(df_anno) 
 
-df_anno[["Iluka-Eneabba-Jaccard-ASV-withTree-exclude7yr"]] <- anno
+# temp <- r1.ps
+
+cols.group.iluka # defined below
+#     7 yr     10 yr     15 yr     19 yr     24 yr     30 yr     38 yr       Ref 
+# "#d53e4f" "#f46d43" "#fdae61" "#e6f598" "#abdda4" "#66c2a5" "#3288bd" "#5e4fa2" 
+
+p_df$group
+p_df$group <- factor(p_df$group,
+                     levels = c("7","10", "15", "19", "24", "30", "38", "Ref"),
+                     labels = c("7 yr","10 yr", "15 yr", "19 yr", "24 yr", "30 yr", "38 yr", "Ref"),
+                     ordered=TRUE)
+
+cols <- cols.group.iluka
+
+#p <- plot_ordination(temp, ord, type="samples", color="group") +
+p <- ggplot(data = p_df, aes(x = PC1, y = PC2, color=group)) +
+  theme_bw()+
+  geom_point()+
+  scale_color_manual(values = cols, name = "Rehab\nage") +
+  #annotate(geom="text", x= -1.2, y= 1.3, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=1) +
+  xlab( paste0("PC1 (",percent_exp1,"%)") ) + ylab( paste0("PC2 (",percent_exp2,"%)") )+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
+p
+
+#grid.text(label = "(d)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(d)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
+
+dev.print(tiff, file = paste0(workdir,"/plots/","Iluka-Eneabba-ASV-atleast10percentnonzero-Aitch-PCA-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+
+
+
+str(p$data)
+
+# only make this once
+#ord_plots <- list()
+length(ord_plots) # 0
+names(ord_plots)
+ord_plots[["Iluka-Eneabba-atleast10percentnonzero-Aitch-ASV-withTree"]] <- p
 
 
 #-------------------------
-
 
 
 
@@ -17309,7 +18039,6 @@ raw.otu.16s <- read_excel(path= paste0(datadir,"/south32/","south32_otu_cluss_ta
 
 raw.otu.16s <- as.data.frame(raw.otu.16s)
 
-#raw.otu.16s <- read.delim(file = paste0(datadir,"/iluka_eneabba/","Iluka_otu_cluss_tax.txt"), header = TRUE, sep = "\t")
 
 names(raw.otu.16s)
 names(raw.otu.16s) <- paste0("X",names(raw.otu.16s))
@@ -17690,7 +18419,6 @@ length(taxa_names_ps) # 54671
 
 
 ## read rep seq fasta file
-#rep_seq <- read.fasta(file = paste0(datadir,"/mtbold/","Mt-Bold-AMD-16S-table-otus.fasta"), seqtype = "DNA", as.string = TRUE)
 length( rep_seq.south32 ) # 64026
 rep_seq <- rep_seq.south32
 names(rep_seq) <- gsub(pattern = " ", replacement = "", x = names(rep_seq) )
@@ -19120,7 +19848,7 @@ ord_obj[["South32-UnWtUniFrac-ASV-withTree"]] <- ord
 
 
 
-## South32 - with Tree - Bray-Curtis - ASV-level - EXCLUDE youngest rehab_age & associated Ref
+## South32 - with Tree - Bray-Curtis - ASV-level - EXCLUDE southernmost sites (young & associated Ref)
 #-------------------------
 
 phy_in <- phy.south32.withTree
@@ -19130,6 +19858,41 @@ sum(sample_sums(phy_in)) # 2049625
 sample_sums(phy_in)
 min(sample_sums(phy_in)) # 54122
 
+
+## exclude southernmost (youngest) group and associated Ref
+
+hist(phy_in@sam_data$`Latitude [decimal degrees]`)
+sel <- which(phy_in@sam_data$`Latitude [decimal degrees]` > 32.95)
+as(phy_in@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
+#                  Sample_ID year.of.rehab.or.ref
+# X138402 102.100.100/138402                 2017
+# X138404 102.100.100/138404                  REF
+# X138406 102.100.100/138406                 2017
+
+rem_samps <- c("X138402","X138404","X138406")
+keep_samps <- which(!sample_names(phy_in) %in% rem_samps)
+# convert from indices to names
+keep_samps <- sample_names(phy_in)[keep_samps]
+keep_samps
+# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376" "X138378" "X138380" "X138382"
+# [14] "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396" "X138398" "X138400"
+
+phy_in <- prune_samples(samples = keep_samps, x = phy_in)
+
+
+phy_in
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 54671 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 54671 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 54671 tips and 54669 internal nodes ]:
+#   taxa are rows
+
+sum(sample_sums(phy_in)) # 1839173
+
+min(sample_sums(phy_in)) # 54122
+
+
 # rarefy #1
 seed <- 123
 r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
@@ -19138,15 +19901,16 @@ r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
 min(taxa_sums(r1.ps)) # 1
 sample_sums(r1.ps) # all 54122
 
-ntaxa(r1.ps) #  54327
-sum(sample_sums(r1.ps)) # 1353050
+ntaxa(r1.ps) #  53404
+sum(sample_sums(r1.ps)) # 1190684
 
 r1.ps
 # phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 54327 taxa and 25 samples ]
-# sample_data() Sample Data:       [ 25 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 54327 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 54327 tips and 54325 internal nodes ]
+# otu_table()   OTU Table:          [ 53404 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 53404 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 53404 tips and 53402 internal nodes ]:
+#   taxa are rows
 
 head(r1.ps@otu_table)
 otu_tab <- t( as(r1.ps@otu_table, "matrix"))
@@ -19166,13 +19930,13 @@ identical(colnames(sim.bray),rownames(sim.bray)) # TRUE
 
 ## which are the reference sites?
 
-sel <- which(r1.ps@sam_data$`year of rehab or ref` == "REF") # qty 6
+sel <- which(r1.ps@sam_data$year.of.rehab.or.ref == "REF") # qty 5
 ( ref_sites <- row.names(r1.ps@sam_data)[sel] )
-# "X138362" "X138366" "X138374" "X138376" "X138378" "X138404"
+# "X138362" "X138366" "X138374" "X138376" "X138378"
 
-table(r1.ps@sam_data$`year of rehab or ref`)
+table(r1.ps@sam_data$year.of.rehab.or.ref)
 # 1991 1996 1999 2002 2005 2007 2011 2017  REF 
-#    2    4    2    2    2    1    3    3    6 
+# 2    4    2    2    2    1    3    1    5 
 
 row.names(r1.ps@sam_data)
 # [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374"
@@ -19200,7 +19964,7 @@ for (i in 1:dim(df_out)[1]) {
   this_compare <- df_out$compare_with[i]
   sel <- which( row.names(r1.ps@sam_data) == this_samp)
   
-  df_out$year_rehab[i] <- as.character(r1.ps@sam_data$`year of rehab or ref`[sel])
+  df_out$year_rehab[i] <- as.character(r1.ps@sam_data$year.of.rehab.or.ref[sel])
   
   row <- which(rownames(df_in)==this_samp)
   col <- which(colnames(df_in)==this_compare)
@@ -19209,13 +19973,13 @@ for (i in 1:dim(df_out)[1]) {
   
 }
 
-dim(df_out) # 150   4
+dim(df_out) # 110   4
 
 # remove remnant self-comparisons
-sel <- which(df_out$samp==df_out$compare_with) # qty 6
+sel <- which(df_out$samp==df_out$compare_with) # qty 5
 identical( which(df_out$samp==df_out$compare_with), which(df_out$similarity==100) ) # TRUE
 df_out <- df_out[-sel, ]
-dim(df_out) # 144   4
+dim(df_out) # 105   4
 
 unique(df_out$year_rehab)
 # "1996" "REF"  "2017" "2002" "2007" "1999" "2011" "2005" "1991"
@@ -19230,61 +19994,61 @@ sort( unique(df_out$group) , decreasing = TRUE)
 
 class(df_out$group) # "character"
 
-dim(df_out) # 144   5
+dim(df_out) # 105   5
 
-## exclude youngest rehab_age group
-sel <- which(df_out$group == "2017") # qty 18
-df_out <- df_out[-sel, ]
-dim(df_out) # 126   5
-
-unique(df_out$group) # "1996" "REF"  "2002" "2007" "1999" "2011" "2005" "1991"
-
-## also exclude the Ref site that was associated with the southernmost youngest sites
-
-hist(r1.ps@sam_data$`Latitude [decimal degrees]`)
-sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.95)
-as(r1.ps@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
-#                  Sample_ID year.of.rehab.or.ref
-# X138402 102.100.100/138402                 2017
-# X138404 102.100.100/138404                  REF
-# X138406 102.100.100/138406                 2017
-
-sel <- which(df_out$samp %in% c("X138402","X138404","X138406")) # qty 5
-df_out[sel, ]
-#        samp compare_with year_rehab similarity group
-# 139 X138404      X138362        REF   28.89398   REF
-# 140 X138404      X138366        REF   21.39426   REF
-# 141 X138404      X138374        REF   32.50249   REF
-# 142 X138404      X138376        REF   24.15654   REF
-# 143 X138404      X138378        REF   25.63098   REF
-
-df_out <- df_out[-sel, ]
-dim(df_out) # 121   5
+# ## exclude youngest rehab_age group
+# sel <- which(df_out$group == "2017") # qty 18
+# df_out <- df_out[-sel, ]
+# dim(df_out) # 126   5
+# 
+# unique(df_out$group) # "1996" "REF"  "2002" "2007" "1999" "2011" "2005" "1991"
+# 
+# ## also exclude the Ref site that was associated with the southernmost youngest sites
+# 
+# hist(r1.ps@sam_data$`Latitude [decimal degrees]`)
+# sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.95)
+# as(r1.ps@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
+# #                  Sample_ID year.of.rehab.or.ref
+# # X138402 102.100.100/138402                 2017
+# # X138404 102.100.100/138404                  REF
+# # X138406 102.100.100/138406                 2017
+# 
+# sel <- which(df_out$samp %in% c("X138402","X138404","X138406")) # qty 5
+# df_out[sel, ]
+# #        samp compare_with year_rehab similarity group
+# # 139 X138404      X138362        REF   28.89398   REF
+# # 140 X138404      X138366        REF   21.39426   REF
+# # 141 X138404      X138374        REF   32.50249   REF
+# # 142 X138404      X138376        REF   24.15654   REF
+# # 143 X138404      X138378        REF   25.63098   REF
+# 
+# df_out <- df_out[-sel, ]
+# dim(df_out) # 121   5
 
 table(df_out$group)
-# 1991 1996 1999 2002 2005 2007 2011  REF 
-#   12   24   12   12   12    6   18   25
+# 1991 1996 1999 2002 2005 2007 2011 2017  REF 
+#   10   20   10   10   10    5   15    5   20 
 
 
 
 df_out$group <- factor(df_out$group, 
-                       levels = c("2011","2007","2005","2002","1999","1996","1991","REF"),
-                       labels = c("8","12","14","17","20","23","28","Ref"), ordered=TRUE)
-# South32 (sampled in 2019; rehab 8-28 yr old)
+                       levels = c("2017","2011","2007","2005","2002","1999","1996","1991","REF"),
+                       labels = c("2","8","12","14","17","20","23","28","Ref"), ordered=TRUE)
+# South32 (sampled in 2019; rehab 2-28 yr old)
 
 table(df_out$group)
-#  8  12  14  17  20  23  28 Ref 
-# 18   6  12  12  12  24  12  25 
+# 2   8  12  14  17  20  23  28 Ref 
+# 5  15   5  10  10  10  20  10  20 
 
 # df_out$group <- factor(df_out$group, levels=as.character(c(0:40,"Ref")),ordered=TRUE)
 # df_out$group
 
-dim(df_out) # 121  5
 
 
 df_out$dist_measure <- "Bray-Curtis"
 df_out$tax_level <- "ASV (with Tree)"
-df_out$study <- "South32\n(exclude 2-year rehab)"
+#df_out$study <- "South32\n(exclude 2-year rehab)"
+df_out$study <- "South32\n(exclude southernmost)"
 df_out$corrected <- "no"   
 df_out$facet_x <- "Bray-Curtis\nASV-level"
 
@@ -19294,7 +20058,8 @@ df_out$facet_x <- "Bray-Curtis\nASV-level"
 length(df_results) #
 names(df_results) #
 
-df_results[["South32-Bray-ASV-withTree-exclude2yr"]] <- df_out
+#df_results[["South32-Bray-ASV-withTree-exclude-2yr"]] <- df_out
+df_results[["South32-Bray-ASV-withTree-exclude-southernmost"]] <- df_out
 #df_out <- df_results[[1]]
 
 
@@ -19318,7 +20083,7 @@ p
 ## with post-hoc Dunn test
 
 str(df_out)
-# 'data.frame':	121 obs. of  10 variables:
+# 'data.frame':	105 obs. of  10 variables:
 
 
 # Kruskal-Wallis test
@@ -19326,21 +20091,22 @@ kt <- kruskal.test( similarity ~ group, df_out) # Kruskal Wallis test
 kt
 # Kruskal-Wallis rank sum test
 # data:  similarity by group
-# Kruskal-Wallis chi-squared = 67.727, df = 7, p-value = 4.249e-12
+# Kruskal-Wallis chi-squared = 69.75, df = 8, p-value = 5.511e-12
 
 
 ## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
 
 unique(df_out$group)
-# 23  Ref 17  12  20  8   14  28 
+# [1] 23  Ref 2   17  12  20  8   14  28 
+# Levels: 2 < 8 < 12 < 14 < 17 < 20 < 23 < 28 < Ref
 
 
 
 # post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
 temp <- df_out
 temp$group <- as.character(temp$group)
-temp$group <- factor(temp$group, levels = c("8","12","14","17","20","23","28","Ref"),
-                     labels = c("8","12","14","17","twenty","23","28","Ref"),ordered = TRUE)
+temp$group <- factor(temp$group, levels = c("2","8","12","14","17","20","23","28","Ref"),
+                     labels = c("2","8","12","14","17","twenty","23","28","Ref"),ordered = TRUE)
 
  
 pt <- dunnTest( similarity ~ group, data = temp,
@@ -19363,28 +20129,29 @@ sig <- cldList(comparison = pt$Comparison,
                threshold  = 0.05)
 
 str(sig)
-# 'data.frame':	8 obs. of  3 variables:
+# 'data.frame':	9 obs. of  3 variables:
 
-unique(sig$Group) #  "12"     "14"     "17"     "23"     "28"     "8"      "Ref"    "twenty"
+unique(sig$Group) #  "12"     "14"     "17"     "2"      "23"     "28"     "8"      "Ref"    "twenty"
 
-sig$Group <- factor( sig$Group, levels=c("8","12","14","17","twenty","23","28","Ref"),
-                     labels = c("8","12","14","17","20","23","28","Ref"),
+sig$Group <- factor( sig$Group, levels=c("2","8","12","14","17","twenty","23","28","Ref"),
+                     labels = c("2","8","12","14","17","20","23","28","Ref"),
                      ordered=TRUE )
 
 sig[ order(sig$Group), ]
 # Group Letter MonoLetter
-# 6     8      b         b 
+# 4     2     ab        ab 
+# 7     8      b         b 
 # 1    12     ab        ab 
 # 2    14     ab        ab 
 # 3    17     ab        ab 
-# 8    20     ac        a c
-# 4    23     ac        a c
-# 5    28     ac        a c
-# 7   Ref      c          c
+# 9    20     ac        a c
+# 5    23      a        a  
+# 6    28     ac        a c
+# 8   Ref      c          c
 
 sig <- sig[ order(sig$Group), ]
 
-levels(sig$Group) # "8"   "12"  "14"  "17"  "20"  "23"  "28"  "Ref"
+levels(sig$Group) # "2"   "8"   "12"  "14"  "17"  "20"  "23"  "28"  "Ref"
 
 ## store annotations for later facet_grid ggplot
 names(df_out)
@@ -19393,10 +20160,10 @@ names(df_out)
 
 anno <- data.frame(group=sig$Group,
                    sig_letter = sig$Letter,
-                   similarity= c(32,40,35,40,47,45,46,48),
+                   similarity= c(29,28,35,36,40,48,45,46,50),
                    dist_measure = rep( "Bray-Curtis", times = dim(sig)[1]),
                    tax_level  = rep( "ASV (with Tree)", times = dim(sig)[1]),
-                   study  = rep( "South32\n(exclude 2-year rehab)", times = dim(sig)[1]),
+                   study  = rep( "South32\n(exclude southernmost)", times = dim(sig)[1]),
                    corrected = rep( "no" , times = dim(sig)[1]),
                    facet_x  = rep( "Bray-Curtis\nASV-level", times = dim(sig)[1])
 )
@@ -19406,13 +20173,100 @@ anno <- data.frame(group=sig$Group,
 length(df_anno) #
 names(df_anno) 
 
-df_anno[["South32-Bray-ASV-withTree-exclude2yr"]] <- anno
+df_anno[["South32-Bray-ASV-withTree-exclude-southernmost"]] <- anno
+
+
+
+
+
+
+
+## ordination plot
+## NMDS + Bray-Curtis
+
+set.seed(123)
+ord <- ordinate(r1.ps, "NMDS", "bray")
+
+ord
+# Call:
+#   metaMDS(comm = veganifyOTU(physeq), distance = distance) 
+# 
+# global Multidimensional Scaling using monoMDS
+# 
+# Data:     wisconsin(sqrt(veganifyOTU(physeq))) 
+# Distance: bray 
+# 
+# Dimensions: 2 
+# Stress:     0.1347151 
+# Stress type 1, weak ties
+# Two convergent solutions found after 20 tries
+# Scaling: centring, PC rotation, halfchange scaling 
+# Species: expanded scores based on ‘wisconsin(sqrt(veganifyOTU(physeq)))’ 
+
+str(r1.ps@sam_data)
+names(sample_data(r1.ps))
+
+r1.ps@sam_data$group <- r1.ps@sam_data$year.of.rehab.or.ref
+unique(r1.ps@sam_data$group) # "1996" "REF"  "2017" "2002" "2007" "1999" "2011" "2005" "1991"
+
+r1.ps@sam_data$group <- factor(r1.ps@sam_data$group,
+                               levels = c("2017","2011","2007","2005","2002","1999","1996","1991","REF"),
+                               labels = c("2","8","12","14","17","20","23","28","Ref"), ordered=TRUE)
+# South32 (sampled in 2019; rehab 2-28 yr old)
+
+
+p <- plot_ordination(r1.ps, ord, type="samples", color="group")
+p
+
+str(p$data)
+
+p_df <- p$data
+
+
+p_df$group
+p_df$group <- factor(p_df$group,
+                     levels = c("2","8","12","14","17","20","23","28","Ref"),
+                     labels = c("2 yr","8 yr","12 yr","14 yr","17 yr","20 yr","23 yr","28 yr","Ref"),
+                     ordered=TRUE)
+
+cols.group.south32
+# 2 yr      8 yr     12 yr     14 yr     17 yr     20 yr     23 yr     28 yr       Ref 
+# "#9e0142" "#d53e4f" "#f46d43" "#fdae61" "#fee08b" "#e6f598" "#abdda4" "#66c2a5" "#5e4fa2" 
+
+
+cols <- cols.group.south32
+
+p <- #plot_ordination(temp, ord, type="samples", color="group") +
+  ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  theme_bw()+
+  geom_point()+
+  scale_color_manual(values = cols, name = "Rehab\nage") +
+  annotate(geom="text", x= -0.7, y= -0.49, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=0) +
+  #xlab( paste0("PC1 (",percent_exp1,"%)") ) + ylab( paste0("PC2 (",percent_exp2,"%)") )+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
+p
+
+#grid.text(label = "(e)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(e)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","South32-Bray-ASV-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+
+
+
+
+# only make this once
+#ord_plots <- list()
+length(ord_plots) #
+names(ord_plots) #
+
+ord_plots[["South32-Bray-ASV-withTree-exclude-southernmost"]] <- p
 
 
 
 #-------------------------
 
-## South32 - with Tree - Jaccard - ASV-level - EXCLUDE youngest rehab_age & associated Ref
+## South32 - with Tree - Jaccard - ASV-level - EXCLUDE southernmost sites (young & associated Ref)
 #-------------------------
 phy_in <- phy.south32.withTree
 min(taxa_sums(phy_in)) # 2
@@ -19420,6 +20274,29 @@ sum(sample_sums(phy_in)) # 2049625
 
 sample_sums(phy_in)
 min(sample_sums(phy_in)) # 54122
+
+
+## exclude southernmost (youngest) group and associated Ref
+
+hist(phy_in@sam_data$`Latitude [decimal degrees]`)
+sel <- which(phy_in@sam_data$`Latitude [decimal degrees]` > 32.95)
+as(phy_in@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
+#                  Sample_ID year.of.rehab.or.ref
+# X138402 102.100.100/138402                 2017
+# X138404 102.100.100/138404                  REF
+# X138406 102.100.100/138406                 2017
+
+rem_samps <- c("X138402","X138404","X138406")
+keep_samps <- which(!sample_names(phy_in) %in% rem_samps)
+# convert from indices to names
+keep_samps <- sample_names(phy_in)[keep_samps]
+keep_samps
+# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376" "X138378" "X138380" "X138382"
+# [14] "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396" "X138398" "X138400"
+
+phy_in <- prune_samples(samples = keep_samps, x = phy_in)
+
+
 
 # rarefy #1
 seed <- 123
@@ -19429,15 +20306,16 @@ r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
 min(taxa_sums(r1.ps)) # 1
 sample_sums(r1.ps) # all 54122
 
-ntaxa(r1.ps) #  54327
-sum(sample_sums(r1.ps)) # 1353050
+ntaxa(r1.ps) #  53404
+sum(sample_sums(r1.ps)) # 1190684
 
 r1.ps
 # phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 54327 taxa and 25 samples ]
-# sample_data() Sample Data:       [ 25 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 54327 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 54327 tips and 54325 internal nodes ]
+# otu_table()   OTU Table:          [ 53404 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 53404 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 53404 tips and 53402 internal nodes ]:
+#   taxa are rows
 
 head(r1.ps@otu_table)
 otu_tab <- t( as(r1.ps@otu_table, "matrix"))
@@ -19456,26 +20334,26 @@ colnames(sim.jacc)
 identical(colnames(sim.jacc),rownames(sim.jacc)) # TRUE
 
 ## which are the reference sites?
-r1.ps@sam_data$`year of rehab or ref`
-# [1] "1996" "1996" "REF"  "2017" "REF"  "2002" "2007" "1996" "REF"  "REF"  "REF"  "1999" "2011" "2011" "2005" "1999" "1996"
-# [18] "2002" "2011" "2005" "1991" "1991" "2017" "REF"  "2017"
+r1.ps@sam_data$year.of.rehab.or.ref
+# [1] "1996" "1996" "REF"  "2017" "REF"  "2002" "2007" "1996" "REF"  "REF"  "REF"  "1999" "2011" "2011" "2005"
+# [16] "1999" "1996" "2002" "2011" "2005" "1991" "1991"
 
-table(r1.ps@sam_data$`year of rehab or ref`)
+table(r1.ps@sam_data$year.of.rehab.or.ref)
 # 1991 1996 1999 2002 2005 2007 2011 2017  REF 
-#    2    4    2    2    2    1    3    3    6 
+# 2    4    2    2    2    1    3    1    5 
 
 row.names(r1.ps@sam_data)
-# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376" "X138378" "X138380"
-# [13] "X138382" "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396" "X138398" "X138400" "X138402" "X138404"
-# [25] "X138406"
+# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376"
+# [11] "X138378" "X138380" "X138382" "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396"
+# [21] "X138398" "X138400"
 
 identical(colnames(sim.jacc), row.names(r1.ps@sam_data)) # TRUE
 
-sel <- which(r1.ps@sam_data$`year of rehab or ref` == "REF") # qty 6
+sel <- which(r1.ps@sam_data$year.of.rehab.or.ref == "REF") # qty 5
 
 ( ref_sites <- row.names(r1.ps@sam_data)[sel] )
 
-# "X138362" "X138366" "X138374" "X138376" "X138378" "X138404"
+#  "X138362" "X138366" "X138374" "X138376" "X138378"
 
 df_in <- sim.jacc
 
@@ -19495,7 +20373,7 @@ for (i in 1:dim(df_out)[1]) {
   this_compare <- df_out$compare_with[i]
   sel <- which( row.names(r1.ps@sam_data) == this_samp)
   
-  df_out$year_rehab[i] <- as.character(r1.ps@sam_data$`year of rehab or ref`[sel])
+  df_out$year_rehab[i] <- as.character(r1.ps@sam_data$year.of.rehab.or.ref[sel])
   
   row <- which(rownames(df_in)==this_samp)
   col <- which(colnames(df_in)==this_compare)
@@ -19504,13 +20382,13 @@ for (i in 1:dim(df_out)[1]) {
   
 }
 
-dim(df_out) # 150   4
+dim(df_out) # 110   4
 
 # remove remnant self-comparisons
-sel <- which(df_out$samp==df_out$compare_with) # qty 6
+sel <- which(df_out$samp==df_out$compare_with) # qty 5
 identical( which(df_out$samp==df_out$compare_with), which(df_out$similarity==100) ) # TRUE
 df_out <- df_out[-sel, ]
-dim(df_out) # 144  4
+dim(df_out) # 105  4
 
 
 sort( unique(df_out$year_rehab) , decreasing = TRUE )
@@ -19524,58 +20402,59 @@ sort( unique(df_out$group) , decreasing = TRUE )
 # 2  8 12 14 17 20 23 28
 
 
-## exclude youngest rehab_age group
-sel <- which(df_out$group == "2017") # qty 18
-df_out <- df_out[-sel, ]
-dim(df_out) # 126   5
-
-unique(df_out$group) # "1996" "REF"  "2002" "2007" "1999" "2011" "2005" "1991"
-
-## also exclude the Ref site that was associated with the southernmost youngest sites
-
-hist(r1.ps@sam_data$`Latitude [decimal degrees]`)
-sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.95)
-as(r1.ps@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
-#                  Sample_ID year.of.rehab.or.ref
-# X138402 102.100.100/138402                 2017
-# X138404 102.100.100/138404                  REF
-# X138406 102.100.100/138406                 2017
-
-sel <- which(df_out$samp %in% c("X138402","X138404","X138406")) # qty 5
-df_out[sel, ]
-#        samp compare_with year_rehab similarity group
-# 139 X138404      X138362        REF   28.89398   REF
-# 140 X138404      X138366        REF   21.39426   REF
-# 141 X138404      X138374        REF   32.50249   REF
-# 142 X138404      X138376        REF   24.15654   REF
-# 143 X138404      X138378        REF   25.63098   REF
-
-df_out <- df_out[-sel, ]
-dim(df_out) # 121   5
+# ## exclude youngest rehab_age group
+# sel <- which(df_out$group == "2017") # qty 18
+# df_out <- df_out[-sel, ]
+# dim(df_out) # 126   5
+# 
+# unique(df_out$group) # "1996" "REF"  "2002" "2007" "1999" "2011" "2005" "1991"
+# 
+# ## also exclude the Ref site that was associated with the southernmost youngest sites
+# 
+# hist(r1.ps@sam_data$`Latitude [decimal degrees]`)
+# sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.95)
+# as(r1.ps@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
+# #                  Sample_ID year.of.rehab.or.ref
+# # X138402 102.100.100/138402                 2017
+# # X138404 102.100.100/138404                  REF
+# # X138406 102.100.100/138406                 2017
+# 
+# sel <- which(df_out$samp %in% c("X138402","X138404","X138406")) # qty 5
+# df_out[sel, ]
+# #        samp compare_with year_rehab similarity group
+# # 139 X138404      X138362        REF   28.89398   REF
+# # 140 X138404      X138366        REF   21.39426   REF
+# # 141 X138404      X138374        REF   32.50249   REF
+# # 142 X138404      X138376        REF   24.15654   REF
+# # 143 X138404      X138378        REF   25.63098   REF
+# 
+# df_out <- df_out[-sel, ]
+# dim(df_out) # 121   5
 
 table(df_out$group)
-# 1991 1996 1999 2002 2005 2007 2011  REF 
-#   12   24   12   12   12    6   18   25
+# 1991 1996 1999 2002 2005 2007 2011 2017  REF 
+# 10   20   10   10   10    5   15    5   20 
 
 
 
 
 df_out$group <- factor(df_out$group, 
-                       levels = c("2011","2007","2005","2002","1999","1996","1991","REF"),
-                       labels = c("8","12","14","17","20","23","28","Ref"), ordered=TRUE)
-# South32 (sampled in 2019; rehab 8-28 yr old)
+                       levels = c("2017","2011","2007","2005","2002","1999","1996","1991","REF"),
+                       labels = c("2","8","12","14","17","20","23","28","Ref"), ordered=TRUE)
+# South32 (sampled in 2019; rehab 2-28 yr old)
 
 table(df_out$group)
-# 8  12  14  17  20  23  28 Ref 
-# 18   6  12  12  12  24  12  25
+# 2   8  12  14  17  20  23  28 Ref 
+# 5  15   5  10  10  10  20  10  20 
 
 
-dim(df_out) # 121 4
+dim(df_out) # 105 5
 
 
 df_out$dist_measure <- "Jaccard"
 df_out$tax_level <- "ASV (with Tree)"
-df_out$study <- "South32\n(exclude 2-year rehab)"
+#df_out$study <- "South32\n(exclude 2-year rehab)"
+df_out$study <- "South32\n(exclude southernmost)"
 df_out$corrected <- "no"   
 df_out$facet_x <- "Jaccard\nASV-level"
 
@@ -19585,12 +20464,538 @@ df_out$facet_x <- "Jaccard\nASV-level"
 length(df_results) #
 names(df_results) #
 
-df_results[["South32-Jaccard-ASV-withTree-exclude2yr"]] <- df_out
+df_results[["South32-Jaccard-ASV-withTree-exclude-southernmost"]] <- df_out
 
 
 
 
 p <- ggplot(data=df_out, aes(x=group, similarity)) + ggtitle("Jaccard Similarity") + #x=group
+  geom_boxplot(outlier.shape = NA)+
+  #geom_point() +
+  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  #geom_hline(yintercept = 70, color="red") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) +
+  labs(x = NULL, y = "Similarity to Remnants (%)")
+p
+
+
+
+
+## Kruskal-Wallis multiple comparison test 
+## with post-hoc Dunn test
+
+str(df_out)
+# 'data.frame':	105 obs. of  10 variables:
+
+
+# Kruskal-Wallis test
+kt <- kruskal.test( similarity ~ group, df_out) # Kruskal Wallis test
+kt
+# Kruskal-Wallis rank sum test
+# data:  similarity by group
+# Kruskal-Wallis chi-squared = 59.226, df = 8, p-value = 6.61e-10
+
+
+## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
+
+unique(df_out$group)
+# [1] 23  Ref 2   17  12  20  8   14  28 
+# Levels: 2 < 8 < 12 < 14 < 17 < 20 < 23 < 28 < Ref
+
+# post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
+temp <- df_out
+temp$group <- as.character(temp$group)
+temp$group <- factor(temp$group, levels = c("2","8","12","14","17","20","23","28","Ref"),
+                     labels = c("2","8","12","14","17","twenty","23","28","Ref"),ordered = TRUE)
+
+ 
+pt <- dunnTest( similarity ~ group, data = temp,
+                method = "bonferroni" )
+pt
+
+
+
+pt$dtres
+pt <- pt$res
+pt
+
+cldList(comparison = pt$Comparison,
+        p.value    = pt$P.adj,
+        threshold  = 0.05)
+
+
+sig <- cldList(comparison = pt$Comparison,
+               p.value    = pt$P.adj,
+               threshold  = 0.05)
+
+str(sig)
+# 'data.frame':	9 obs. of  3 variables:
+
+unique(sig$Group) #  "12"     "14"     "17"     "2"      "23"     "28"     "8"      "Ref"    "twenty"
+
+sig$Group <- factor( sig$Group, levels=c("2","8","12","14","17","twenty","23","28","Ref"),
+                     labels = c("2","8","12","14","17","20","23","28","Ref"),
+                     ordered=TRUE )
+
+
+sig[ order(sig$Group), ]
+# Group Letter MonoLetter
+# 4     2    abc        abc
+# 7     8      b         b 
+# 1    12    abc        abc
+# 2    14     ab        ab 
+# 3    17    abc        abc
+# 9    20      c          c
+# 5    23     ac        a c
+# 6    28     ac        a c
+# 8   Ref      c          c
+
+sig <- sig[ order(sig$Group), ]
+
+levels(sig$Group) # "2"  "8"   "12"  "14"  "17"  "20"  "23"  "28"  "Ref"
+
+## store annotations for later facet_grid ggplot
+names(df_out)
+# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"          "dist_measure"   "tax_level"     
+# [10] "study"          "corrected"      "facet_x"  
+
+anno <- data.frame(group=sig$Group,
+                   sig_letter = sig$Letter,
+                   similarity= c(26,24,28,26,32,35,34,33,35),
+                   dist_measure = rep( "Jaccard", times = dim(sig)[1]),
+                   tax_level  = rep( "ASV (with Tree)", times = dim(sig)[1]),
+                   study  = rep( "South32\n(exclude southernmost)", times = dim(sig)[1]),
+                   corrected = rep( "no" , times = dim(sig)[1]),
+                   facet_x  = rep( "Jaccard\nASV-level", times = dim(sig)[1])
+)
+
+# only make this once
+#df_anno <- list()
+length(df_anno) #
+names(df_anno) 
+
+df_anno[["South32-Jaccard-ASV-withTree-exclude-southernmost"]] <- anno
+
+
+
+#-------------------------
+
+
+## South32 - with Tree - Centred log ratio > Aitchison (Euclidean dist.) - ASV-level - EXCLUDE southernmost sites (young & associated Ref)
+#-------------------------
+
+phy_in <- phy.south32.withTree
+min(taxa_sums(phy_in)) # 2
+sum(sample_sums(phy_in)) # 2049625
+
+sample_sums(phy_in)
+min(sample_sums(phy_in)) # 54122
+
+phy_in
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 54671 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 54671 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 54671 tips and 54669 internal nodes ]:
+#   taxa are rows
+
+## exclude southernmost (youngest) group and associated Ref
+
+hist(phy_in@sam_data$`Latitude [decimal degrees]`)
+sel <- which(phy_in@sam_data$`Latitude [decimal degrees]` > 32.95)
+as(phy_in@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
+#                  Sample_ID year.of.rehab.or.ref
+# X138402 102.100.100/138402                 2017
+# X138404 102.100.100/138404                  REF
+# X138406 102.100.100/138406                 2017
+
+rem_samps <- c("X138402","X138404","X138406")
+keep_samps <- which(!sample_names(phy_in) %in% rem_samps)
+# convert from indices to names
+keep_samps <- sample_names(phy_in)[keep_samps]
+keep_samps
+# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376" "X138378" "X138380" "X138382"
+# [14] "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396" "X138398" "X138400"
+
+phy_in <- prune_samples(samples = keep_samps, x = phy_in)
+min(taxa_sums(phy_in)) # 0
+
+
+phy_in
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 54671 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 54671 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 54671 tips and 54669 internal nodes ]:
+#   taxa are rows
+
+
+
+min(taxa_sums(phy_in)) # 0
+sum(sample_sums(phy_in)) # 1839173
+min(sample_sums(phy_in)) # 54122
+
+
+ 
+
+
+
+### focus on 'compositional' approach to data analysis as per:
+### - Quinn et al 2019. A field guide for the compositional analysis of any-omics dataworkflow
+### - Gloor et al 2017. Microbiome datasets are compositional: and this is not optional
+### steps are: 1) Zero handling; 2) CLR normalization; 3) Aitchison distance calc; 4) PCA ordination
+
+
+otus <- as.data.frame( phy_in@otu_table )
+dim(otus) # 54671    22
+# however functions to be used expect rows as samples
+otus.tr <- t(otus)
+
+
+
+# only retain taxa that have non-zero counts in >= 10% of samples.
+
+checkNumZerosCol <- apply(otus.tr,2,function(x) sum(x==0))
+head(checkNumZerosCol)
+
+length(checkNumZerosCol) # 54671
+dim(otus.tr) # 22 54671
+
+nrow(otus.tr) # 22
+
+sel <- which(checkNumZerosCol < 0.9*nrow(otus.tr)) # qty 43598 - taxa with non-zero counts in at least 10% of samples
+
+
+
+keep_taxa <- colnames(otus.tr)[sel]
+
+phy_in <- prune_taxa(phy_in, taxa = keep_taxa)
+phy_in
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 43598 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 43598 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 43598 tips and 43596 internal nodes ]:
+#   taxa are rows
+
+sum(sample_sums(phy_in)) # 1782724
+
+otus <- as.data.frame( phy_in@otu_table )
+otus.tr <- t(otus)
+
+
+
+set.seed(1234)
+otus.nozero <- cmultRepl(otus.tr, output = "p-counts")
+# No. corrected values:  90756  - for at least 10% non-zeros within samples
+dim(otus.tr) # 22 43598
+100 * 90756 / (22 * 43598) # 9.462069 % were zeros - for at least 10% non-zeros within samples
+
+
+
+
+## Perform differential proportionality analysis using 'propr'
+## designed to identify feature coordination in compositional data
+# propr package tests for the presence of feature coordination across all samples
+# propr expects:
+# 'counts': the data matrix with rows as samples
+# 'metric': the proportionality metric to calculate
+# 'ivar': the log-ratio transform reference
+# uses package 'propr'
+
+# Quinn et al 2019, p7: "We interpret clr-based proportionality 
+# to signify a coordination that follows the general trend
+# of the data. In other words, these proportional genes move together
+# as individuals relative to how most genes move on average."
+
+
+## NOTE: this fails due to memory shortage. Therefore, run on HPC.
+# set.seed(123)
+# pr <- propr(counts = otus.nozero,
+#             metric = "rho",
+#             ivar = "clr")
+
+
+getwd() # "/Users/lidd0026/WORKSPACE/PROJ/Restoration-Trajectories/modelling"
+saveRDS(object = otus.nozero, file = "south32-otus-nozero-atleast10percentnonzero.RDS")
+
+
+# Issue with large number of features > 47000
+# https://githubmemory.com/repo/tpq/propr/issues/13
+
+
+
+
+
+# # # # # #
+# # # # # #
+
+## Rscript run on HPC
+
+# $cd /scratch/user/lidd0026/resto_traj
+# $sbatch run_perform_clr_transform.sh
+# $squeue
+# $sinfo -N -o "%N %C %e %m"
+
+
+## contents of 'run_perform_clr_transform.sh'
+
+# #!/bin/bash
+# 
+# #SBATCH --ntasks=1
+# #SBATCH --nodes=1
+# #SBATCH --time=2-0
+# #SBATCH --mem=128000M
+# #SBATCH --cpus-per-task=16
+# Rscript perform_clr_transform.R
+
+
+## contents of 'perform_clr_transform.R'
+
+# # set library path
+# .libPaths(new= "/home/lidd0026/miniconda3/lib/R/library")
+# 
+# # load required packages
+# library(propr)
+# 
+# # working directory
+# workdir <- "/scratch/user/lidd0026/resto_traj"
+# setwd(workdir)
+# 
+# otus.nozero <- readRDS(file = "south32-otus-nozero-atleast10percentnonzero.RDS")
+# 
+# set.seed(1234)
+# pr <- propr(counts = otus.nozero, metric = "rho", ivar = "clr")
+# 
+# saveRDS(object = pr@logratio, file = "south32-propr-centred-log-ratio-output-on-HPC-atleast10percentnonzero.RDS")
+#
+# # END
+
+
+## copy result back from HPC
+
+pr_clr <- readRDS(file = file.path(workdir,"deepthoughtHPC/south32-propr-centred-log-ratio-output-on-HPC-atleast10percentnonzero.RDS"))
+str(pr_clr)
+# 'data.frame':	22 obs. of  43598 variables:
+
+pr_clr[1:5, 1:5]
+#            otu_1      otu_2       otu_3      otu_5       otu_4
+# X39041 3.3207855 -0.3717136  0.83587886  2.2221732 -0.03386919
+# X39043 1.2407834 -0.4921780  0.54763619 -0.3809523  0.54763619
+# X39045 1.6841896 -0.2916720  2.60048034 -0.1804463  0.01861126
+# X39047 0.0957669 -0.5260065 -0.10112332 -0.4147809  0.30434178
+# X39049 0.2051417 -0.3899493  0.03493393  2.1117041  0.44039903
+
+# check original format of ASV abundance table
+head(phy_in@otu_table)
+# OTU Table:          [ 6 taxa and 36 samples ]:
+#   Taxa are rows
+# X39041 X39043 X39045 X39047 X39049 X39051 X39053 X39055 X39057 X39059 X39061 X39063 X39065 X39067 X39069 X39071 X39073 X39075
+# otu_1     12      2      2      0      0      0      1      2      4      2      1      0      6      0      1      0      4      3
+# otu_2      0      0      0      0      0      0      0      0      2      0      0      0      0      0      0      0      0      4
+# otu_3      1      1      5      0      0      0      0      4      1      0      4      0      0      2      0      0      0      1
+# otu_5      4      0      0      0      5      0      0      0      3      0      0      1      0      0      0      0      0      0
+# otu_4      0      1      0      0      0     14      0      0      0      0      3      4      1      0      0      1      0      1
+# otu_6      0      0      2      1      0      0      0      0      1      0      2      0      0      0      0      0      0      0
+# # … with 10 more samples (columns)
+
+head(t(pr_clr))
+
+phy.temp <- phy_in
+phy.temp@otu_table <- otu_table( t(pr_clr) , taxa_are_rows = TRUE)
+
+head(phy.temp@otu_table)
+phy.temp
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 43598 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 43598 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 43598 tips and 43596 internal nodes ]:
+#   taxa are rows
+
+
+## CLR-transformed data does not need to be rarefied. However use r1.ps data object in code
+
+r1.ps <- phy.temp
+
+min(taxa_sums(r1.ps)) # -37.76528
+
+ntaxa(r1.ps) #  43598
+
+
+
+head(r1.ps@otu_table)
+otu_tab <- t( as(r1.ps@otu_table, "matrix"))
+
+
+
+## Use Aitchison distance, which is simply the Euclian distance between samples after clr transformation
+## Ref: Gloor et al 2017 - Microbiome datasets are compositional: And this is not optional
+
+dist.aitch <- vegan::vegdist(x = otu_tab, method = "euclidean")
+str(dist.aitch)
+dist.aitch <- as(dist.aitch, "matrix")
+# express as similarity
+
+max(dist.aitch) # 288.3967
+hist(dist.aitch)
+
+# divide by max value then subtract from 1 and multiply by 100%
+
+sim.aitch <- 100*(1 - dist.aitch/max(dist.aitch))
+hist(sim.aitch)
+
+
+
+# list all sample names
+colnames(sim.aitch)
+# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376" "X138378" "X138380" "X138382"
+# [14] "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396" "X138398" "X138400"
+
+identical(colnames(sim.aitch),rownames(sim.aitch)) # TRUE
+
+## which are the reference sites?
+
+sel <- which(r1.ps@sam_data$year.of.rehab.or.ref == "REF") # qty 5
+( ref_sites <- row.names(r1.ps@sam_data)[sel] )
+# "X138362" "X138366" "X138374" "X138376" "X138378"
+
+table(r1.ps@sam_data$year.of.rehab.or.ref)
+# 1991 1996 1999 2002 2005 2007 2011 2017  REF 
+#    2    4    2    2    2    1    3    1    5 
+
+row.names(r1.ps@sam_data)
+# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376" "X138378" "X138380" "X138382"
+# [14] "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396" "X138398" "X138400"
+
+identical(colnames(sim.aitch), row.names(r1.ps@sam_data)) # TRUE
+
+
+df_in <- sim.aitch
+
+df_out <- data.frame(samp= rep( x = colnames(sim.aitch), each=length(ref_sites) ),
+                     compare_with = rep( x = ref_sites, times = length(colnames(sim.aitch))),
+                     #site=NA,
+                     #site_full_desc=NA,
+                     year_rehab=NA,
+                     similarity=NA
+)
+
+
+
+for (i in 1:dim(df_out)[1]) {
+  #i<-1
+  this_samp <- df_out$samp[i]
+  this_compare <- df_out$compare_with[i]
+  sel <- which( row.names(r1.ps@sam_data) == this_samp)
+  
+  df_out$year_rehab[i] <- as.character(r1.ps@sam_data$year.of.rehab.or.ref[sel])
+  
+  row <- which(rownames(df_in)==this_samp)
+  col <- which(colnames(df_in)==this_compare)
+  
+  df_out$similarity[i] <- df_in[row,col]
+  
+}
+
+dim(df_out) # 110   4
+
+# remove remnant self-comparisons
+sel <- which(df_out$samp==df_out$compare_with) # qty 5
+identical( which(df_out$samp==df_out$compare_with), which(df_out$similarity==100) ) # TRUE
+df_out <- df_out[-sel, ]
+dim(df_out) # 105   4
+
+unique(df_out$year_rehab)
+# "1996" "REF"  "2017" "2002" "2007" "1999" "2011" "2005" "1991"
+
+df_out$group <- df_out$year_rehab
+sort( unique(df_out$group) , decreasing = TRUE)
+#"REF"  "2017" "2011" "2007" "2005" "2002" "1999" "1996" "1991"
+
+2019 - c(2017,2011,2007,2005,2002,1999,1996,1991)
+# 2  8 12 14 17 20 23 28
+
+
+class(df_out$group) # "character"
+
+dim(df_out) # 105   5
+
+# ## exclude youngest rehab_age group
+# sel <- which(df_out$group == "2017") # qty 18
+# df_out <- df_out[-sel, ]
+# dim(df_out) # 126   5
+# 
+# unique(df_out$group) # "1996" "REF"  "2002" "2007" "1999" "2011" "2005" "1991"
+# 
+# ## also exclude the Ref site that was associated with the southernmost youngest sites
+# 
+# hist(r1.ps@sam_data$`Latitude [decimal degrees]`)
+# sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.95)
+# as(r1.ps@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
+# #                  Sample_ID year.of.rehab.or.ref
+# # X138402 102.100.100/138402                 2017
+# # X138404 102.100.100/138404                  REF
+# # X138406 102.100.100/138406                 2017
+# 
+# sel <- which(df_out$samp %in% c("X138402","X138404","X138406")) # qty 5
+# df_out[sel, ]
+# #        samp compare_with year_rehab similarity group
+# # 139 X138404      X138362        REF   28.89398   REF
+# # 140 X138404      X138366        REF   21.39426   REF
+# # 141 X138404      X138374        REF   32.50249   REF
+# # 142 X138404      X138376        REF   24.15654   REF
+# # 143 X138404      X138378        REF   25.63098   REF
+# 
+# df_out <- df_out[-sel, ]
+# dim(df_out) # 121   5
+
+
+table(df_out$group)
+# 1991 1996 1999 2002 2005 2007 2011 2017  REF 
+#   10   20   10   10   10    5   15    5   20 
+
+
+
+df_out$group <- factor(df_out$group, 
+                       levels = c("2017","2011","2007","2005","2002","1999","1996","1991","REF"),
+                       labels = c("2","8","12","14","17","20","23","28","Ref"), ordered=TRUE)
+# South32 (sampled in 2019; rehab 2-28 yr old)
+### South32 (sampled in 2019; rehab 8-28 yr old)
+
+
+table(df_out$group)
+# 2   8  12  14  17  20  23  28 Ref 
+# 5  15   5  10  10  10  20  10  20
+
+# df_out$group <- factor(df_out$group, levels=as.character(c(0:40,"Ref")),ordered=TRUE)
+# df_out$group
+
+dim(df_out) # 105  5
+
+
+df_out$dist_measure <- "Aitchison"
+df_out$tax_level <- "At least 10% non-zero - ASV (with Tree)"
+df_out$study <- "South32\n(exclude southernmost)"
+df_out$corrected <- "no"   
+df_out$facet_x <- "At least 10% non-zero - Aitchison\nASV-level"
+
+
+# only make this once
+#df_results <- list()
+length(df_results) #
+names(df_results) #
+
+df_results[["South32--atleast10percentnonzero-Aitch-ASV-withTree-exclude-southernmost"]] <- df_out
+
+#df_out <- df_results[[1]]
+
+
+
+p <- ggplot(data=df_out, aes(x=group, similarity)) + ggtitle("CLR-Aitchison Similarity") + #x=group
   geom_boxplot(outlier.shape = NA)+
   #geom_point() +
   geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
@@ -19617,21 +21022,24 @@ kt <- kruskal.test( similarity ~ group, df_out) # Kruskal Wallis test
 kt
 # Kruskal-Wallis rank sum test
 # data:  similarity by group
-# Kruskal-Wallis chi-squared = 62.957, df = 7, p-value = 3.867e-11
+# Kruskal-Wallis chi-squared = 65.965, df = 8, p-value = 3.109e-11
 
 
 ## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
 
 unique(df_out$group)
-# 23  Ref 2   17  12  20  8   14  28 
+# [1] 23  Ref 2   17  12  20  8   14  28 
+# Levels: 2 < 8 < 12 < 14 < 17 < 20 < 23 < 28 < Ref
+
+
 
 # post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
 temp <- df_out
 temp$group <- as.character(temp$group)
-temp$group <- factor(temp$group, levels = c("8","12","14","17","20","23","28","Ref"),
-                     labels = c("8","12","14","17","twenty","23","28","Ref"),ordered = TRUE)
+temp$group <- factor(temp$group, levels = c("2","8","12","14","17","20","23","28","Ref"),
+                     labels = c("2","8","12","14","17","twenty","23","28","Ref"),ordered = TRUE)
 
- 
+
 pt <- dunnTest( similarity ~ group, data = temp,
                 method = "bonferroni" )
 pt
@@ -19652,29 +21060,29 @@ sig <- cldList(comparison = pt$Comparison,
                threshold  = 0.05)
 
 str(sig)
-# 'data.frame':	8 obs. of  3 variables:
+# 'data.frame':	9 obs. of  3 variables:
 
-unique(sig$Group) #  "12"     "14"     "17"     "23"     "28"     "8"      "Ref"    "twenty"
+unique(sig$Group) #  "12"     "14"     "17"   "2"   "23"     "28"     "8"      "Ref"    "twenty"
 
-sig$Group <- factor( sig$Group, levels=c("8","12","14","17","twenty","23","28","Ref"),
-                     labels = c("8","12","14","17","20","23","28","Ref"),
+sig$Group <- factor( sig$Group, levels=c("2","8","12","14","17","twenty","23","28","Ref"),
+                     labels = c("2","8","12","14","17","20","23","28","Ref"),
                      ordered=TRUE )
-
 
 sig[ order(sig$Group), ]
 # Group Letter MonoLetter
-# 6     8      b         b 
-# 1    12    abc        abc
+# 4     2     ab        ab 
+# 7     8      b         b 
+# 1    12     ab        ab 
 # 2    14     ab        ab 
-# 3    17    abc        abc
-# 8    20      c          c
-# 4    23     ac        a c
-# 5    28      c          c
-# 7   Ref      c          c
+# 3    17     ab        ab 
+# 9    20     ac        a c
+# 5    23     ac        a c
+# 6    28     ac        a c
+# 8   Ref      c          c
 
 sig <- sig[ order(sig$Group), ]
 
-levels(sig$Group) # "8"   "12"  "14"  "17"  "20"  "23"  "28"  "Ref"
+levels(sig$Group) # "2"   "8"   "12"  "14"  "17"  "20"  "23"  "28"  "Ref"
 
 ## store annotations for later facet_grid ggplot
 names(df_out)
@@ -19683,12 +21091,12 @@ names(df_out)
 
 anno <- data.frame(group=sig$Group,
                    sig_letter = sig$Letter,
-                   similarity= c(24,28,26,32,35,34,33,35),
-                   dist_measure = rep( "Jaccard", times = dim(sig)[1]),
-                   tax_level  = rep( "ASV (with Tree)", times = dim(sig)[1]),
-                   study  = rep( "South32\n(exclude 2-year rehab)", times = dim(sig)[1]),
+                   similarity= c(15,12,15,23,22,24,25,26,32),
+                   dist_measure = rep( "Aitchison", times = dim(sig)[1]),
+                   tax_level  = rep( "At least 10% non-zero - ASV (with Tree)", times = dim(sig)[1]),
+                   study  = rep( "South32\n(exclude southernmost)", times = dim(sig)[1]),
                    corrected = rep( "no" , times = dim(sig)[1]),
-                   facet_x  = rep( "Jaccard\nASV-level", times = dim(sig)[1])
+                   facet_x  = rep("At least 10% non-zero - Aitchison\nASV-level", times = dim(sig)[1])
 )
 
 # only make this once
@@ -19696,11 +21104,90 @@ anno <- data.frame(group=sig$Group,
 length(df_anno) #
 names(df_anno) 
 
-df_anno[["South32-Jaccard-ASV-withTree-exclude2yr"]] <- anno
+df_anno[["South32--atleast10percentnonzero-Aitch-ASV-withTree-exclude-southernmost"]] <- anno
 
-## UP TO HERE !!!
+
+
+
+
+## PCA plot ...
+
+clr.pca <- prcomp( dist.aitch)
+summary(clr.pca)
+
+#ggbiplot(clr.pca)
+
+PC1 <- clr.pca$rotation[,1]
+PC2 <- clr.pca$rotation[,2]
+
+percent_exp1 <- round( summary(clr.pca)$importance[ "Proportion of Variance" ,"PC1"]*100 , digits = 1 )
+percent_exp2 <- round( summary(clr.pca)$importance[ "Proportion of Variance" ,"PC2"]*100 , digits = 1 )
+
+
+
+## in this case r1.ps refers to CLR-transformed data
+
+r1.ps@sam_data$group <- r1.ps@sam_data$year.of.rehab.or.ref
+unique(r1.ps@sam_data$group)
+# "1996" "REF"  "2017" "2002" "2007" "1999" "2011" "2005" "1991"
+
+r1.ps@sam_data$group <- factor( r1.ps@sam_data$group, 
+                                levels = c("2017","2011","2007","2005","2002","1999","1996","1991","REF"),
+                                labels = c("2","8","12","14","17","20","23","28","Ref"), ordered=TRUE)
+# South32 (sampled in 2019; rehab 2-28 yr old)
+
+
+
+p_df <- data.frame(PC1=PC1, PC2=PC2,
+                   sample=r1.ps@sam_data$Sample_ID,
+                   group=r1.ps@sam_data$group
+)
+
+
+
+cols.group.south32 # defined below
+#      2 yr      8 yr     12 yr     14 yr     17 yr     20 yr     23 yr     28 yr       Ref 
+# "#9e0142" "#d53e4f" "#f46d43" "#fdae61" "#fee08b" "#e6f598" "#abdda4" "#66c2a5" "#5e4fa2" 
+
+p_df$group
+p_df$group <- factor(p_df$group,
+                     levels = c("2","8","12","14","17","20","23","28","Ref"),
+                     labels = c("2 yr","8 yr","12 yr","14 yr","17 yr","20 yr","23 yr","28 yr","Ref"),
+                     ordered=TRUE)
+
+cols <- cols.group.south32
+
+#p <- plot_ordination(temp, ord, type="samples", color="group") +
+p <- ggplot(data = p_df, aes(x = PC1, y = PC2, color=group)) +
+  theme_bw()+
+  geom_point()+
+  scale_color_manual(values = cols, name = "Rehab\nage") +
+  #annotate(geom="text", x= -1.2, y= 1.3, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=1) +
+  xlab( paste0("PC1 (",percent_exp1,"%)") ) + ylab( paste0("PC2 (",percent_exp2,"%)") )+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
+p
+
+#grid.text(label = "(f)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(f)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
+
+dev.print(tiff, file = paste0(workdir,"/plots/","South32-atleast10percentnonzero-Aitch-ASV-PCA-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+
+
+
+str(p$data)
+
+# only make this once
+#ord_plots <- list()
+length(ord_plots) # 0
+names(ord_plots)
+ord_plots[["South32-atleast10percentnonzero-Aitch-ASV-PCA-withTree-exclude-southernmost"]] <- p
+
+
 
 #-------------------------
+
 
 
 
@@ -19810,7 +21297,7 @@ p <- ggplot(
   mapping = aes(x = Depth.x, y = Alpha_diversity, colour = group, group = Sample)) +
   theme_bw() +
   scale_colour_manual(values = cols, name  ="Rehab\nage") +
-  ggtitle("(A) Huntly") +
+  ggtitle("(a) Huntly") +
   labs(x = "ASV sequence depth", y = "Observed ASVs (count)") +
   geom_line() +
   geom_vline(xintercept = min(sample_sums(psdata)), linetype="dotted") +
@@ -19893,7 +21380,7 @@ p <- ggplot(
   mapping = aes(x = Depth, y = Alpha_diversity, colour = group, group = Sample)) +
   theme_bw() +
   scale_colour_manual(values = cols, name  ="Rehab\nage") +
-  ggtitle("(B) Eneabba") +
+  ggtitle("(b) Eneabba") +
   labs(x = "ASV sequence depth", y = "Observed ASVs (count)") +
   geom_line() +
   geom_vline(xintercept = min(sample_sums(psdata)), linetype="dotted") +
@@ -19976,7 +21463,7 @@ p <- ggplot(
   mapping = aes(x = Depth, y = Alpha_diversity, colour = group, group = Sample)) +
   theme_bw() +
   scale_colour_manual(values = cols, name  ="Rehab\nage") +
-  ggtitle("(C) Worsley") +
+  ggtitle("(c) Worsley") +
   labs(x = "ASV sequence depth", y = "Observed ASVs (count)") +
   geom_line() +
   geom_vline(xintercept = min(sample_sums(psdata)), linetype="dotted") +
@@ -19992,6 +21479,641 @@ ggsave(plot=p, filename = paste0("plots/","Rarefaction-curve-C-South32-Worsley.t
 
 #-------------------------
 
+
+#### facet_grid trajectory plots + predict time to reach ref:
+##   ASV -- Bray-Curtis + Aitchison -- Alcoa + Iluka-Eneabba + South32 (excl. southern)
+#-------------------------
+
+names(df_results)
+
+
+names(df_results[[1]])
+# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"    
+# [7] "group"          "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"  
+
+
+keep_results <- c("Alcoa-Bray-ASV-withTree" , "Alcoa-atleast10percentnonzero-Aitch-ASV-withTree"  ,
+                  
+                  "Iluka-Eneabba-Bray-ASV-withTree" ,"Iluka-Eneabba-atleast10percentnonzero-Aitch-ASV-withTree" ,
+                  
+                  "South32-Bray-ASV-withTree-exclude-southernmost"  ,  "South32--atleast10percentnonzero-Aitch-ASV-withTree-exclude-southernmost" 
+)
+
+
+keep_cols <- c("samp","compare_with","similarity","group","dist_measure","tax_level","study","corrected","facet_x")
+traj_data <- df_results[[ keep_results[1] ]][ ,keep_cols]
+for (i in 2:length(keep_results)) {
+  traj_data <- rbind(traj_data,df_results[[ keep_results[i] ]][ ,keep_cols])
+  print(paste0("completed ",i))
+}
+dim(traj_data) # 1920   9
+unique(traj_data$facet_x) # "Bray-Curtis\nASV-level"    "At least 10% non-zero - Aitchison\nASV-level" 
+
+keep_cols_anno <- c("group","sig_letter","similarity","dist_measure","tax_level","study","corrected","facet_x")
+anno_data <- df_anno[[ keep_results[1] ]][ ,keep_cols_anno]
+for (i in 2:length(keep_results)) {
+  anno_data <- rbind(anno_data,df_anno[[ keep_results[i] ]][ ,keep_cols_anno])
+  print(paste0("completed ",i))
+}
+dim(anno_data) # 48  8
+class(anno_data$facet_x) # "character"
+unique(anno_data$facet_x) # "character"
+# "Bray-Curtis\nASV-level" ,  "At least 10% non-zero - Aitchison\nASV-level"
+anno_data$facet_x <- factor(anno_data$facet_x,
+                            levels = c("Bray-Curtis\nASV-level" ,  "At least 10% non-zero - Aitchison\nASV-level"),
+                            ordered = TRUE)
+
+class(traj_data$group) # "ordered" "factor" 
+unique(traj_data$facet_x)
+# "Bray-Curtis\nASV-level"                       "At least 10% non-zero - Aitchison\nASV-level" 
+class(traj_data$facet_x) # "character"
+traj_data$facet_x <- factor(traj_data$facet_x,
+                            levels = c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level"  ),
+                            ordered = TRUE)
+class(traj_data$group)
+# "ordered" "factor" 
+
+traj_data$group <- factor(traj_data$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
+
+levels(traj_data$group)
+# [1] "0"   "1"   "2"   "3"   "4"   "5"   "6"   "7"   "8"   "9"   "10"  "11"  "12"  "13"  "14" 
+# [16] "15"  "16"  "17"  "18"  "19"  "20"  "21"  "22"  "23"  "24"  "25"  "26"  "27"  "28"  "29" 
+# [31] "30"  "31"  "32"  "33"  "34"  "35"  "36"  "37"  "38"  "39"  "40"  "41"  "42"  "43"  "44" 
+# [46] "45"  "Ref"
+
+length(levels(traj_data$group)) #47
+
+x_labels <- c("0","","","","","","","","","","10",
+              "","","","","","","","","","20",
+              "","","","","","","","","","30",
+              "","","","","","","","","","40",
+              "","","","","","Ref")
+length(x_labels)
+# 47
+x_ticks <- c(1,0,0,0,0,0,0,0,0,0,1,
+             0,0,0,0,0,0,0,0,0,1,
+             0,0,0,0,0,0,0,0,0,1,
+             0,0,0,0,0,0,0,0,0,1,
+             0,0,0,0,0,1)
+length(x_ticks)
+#47
+
+
+unique(traj_data$study) # "Alcoa"                           "Iluka-Eneabba"                   "South32\n(exclude southernmost)"
+
+unique(anno_data$study) # "Alcoa"                           "Iluka-Eneabba"                   "South32\n(exclude southernmost)"
+
+
+
+
+
+## median reference horizontal lines ...
+
+href_lines <- data.frame(
+  study  = rep( c("Alcoa", "Iluka-Eneabba", "South32\n(exclude southernmost)"), times = 2 ),
+  facet_x  = rep( c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level" ), each = 3),
+  similarity= NA
+)
+
+x <- traj_data
+
+for (i in 1:dim(href_lines)[1]) {
+  #i<-1
+  sel <- which(x$study == href_lines$study[i] & x$facet_x == href_lines$facet_x[i] & x$group == "Ref")
+  href_lines$similarity[i] <- median( x$similarity[sel] )
+}
+href_lines$facet_x <- factor(href_lines$facet_x,
+                             levels = c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level"),
+                             ordered = TRUE)
+
+
+## fit logarithmic models for each data type (facet_x)
+
+
+
+## BOOTSTRAP MODELS ...
+
+pred_models_boot <- data.frame(study=NA, # one of: "Alcoa", "Iluka-Eneabba", "South32\n(exclude southernmost)"
+                               facet_x=NA, # one of: c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level")
+                               study_and_metric=NA, # combine the two values above
+                               group=NA,
+                               group_num=NA,
+                               similarity=NA,
+                               boot_no=NA,                 # EXTRA
+                               ref_median=NA,              # EXTRA
+                               pred_time_to_ref_median=NA, # EXTRA
+                               pred_type=NA)     # c("rectangular hyperbola", "logarithmic")
+pred_models_boot.temp <- pred_models_boot
+
+studies <- c("Alcoa", "Iluka-Eneabba", "South32\n(exclude southernmost)")
+metrics <- c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level")
+pred_types <- c("rectangular hyperbola", "negative exponential", "logarithmic")
+k<-3
+
+## run logarithmic model only !!!
+
+x <- traj_data
+dim(x) # 1920    9
+
+for (i in 1:length(studies)) {
+  #i<-3
+  this_study <- studies[i]
+  for (j in 1:length(metrics)) {
+    #j<-2
+    this_metric <- metrics[j]
+    
+    # prepare data for modelling
+    subsel <- which(x$facet_x == this_metric & x$study==this_study)
+    newdat <- x[subsel, c("similarity","group") ]
+    newdat$group_num <- as.numeric(as.character(newdat$group))
+    # remove 'Ref' similarities which have now been converted to NA
+    sel.na <- which(is.na(newdat$group_num))
+    
+    this_ref_median <- median(newdat$similarity[sel.na])
+    
+    newdat <- newdat[-sel.na, ]
+    
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
+    
+    # prep output dataframe for prediction model to populate
+    sel.dup <- which(duplicated(newdat$group)==TRUE)
+    new_preds <- data.frame(matrix( nrow=dim(newdat[-sel.dup, ])[1], ncol = length(names(pred_models_boot.temp)) ))
+    names(new_preds) <- names(pred_models_boot.temp)
+    new_preds$group_num <- sort( newdat$group_num[-sel.dup] )
+    new_preds$study <- this_study
+    new_preds$facet_x <- this_metric
+    new_preds$study_and_metric <- paste0(new_preds$study,"__",new_preds$facet_x)
+    new_preds$group <- as.character(new_preds$group_num)
+    new_preds$ref_median <- this_ref_median
+    
+    #for (k in 1:length(pred_types)) {
+    
+    this_pred_model_type <- pred_types[k]
+    
+    ## NOTE:
+    #  rectangular hyperbola ( fct = MM.2() from ‘drc' package; https://www.statforbiology.com/nonlinearregression/usefulequations#michaelis-menten_equation), and 
+    #  negative exponential ( fct = DRC.negExp() from 'aomisc' package; https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function)
+    #  models were trialled however these regularly failed to achieve model fits.
+    
+    
+    # NOW using "logarithmic" model only !!!!!
+    
+    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
+    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
+    
+    for (b in 1:100) {
+      #b<-1
+      new_preds$boot_no <- b
+      set.seed(b + 1234)
+      sel.boot <- sample(x = c(1:dim(newdat)[1]), size = dim(newdat)[1], replace = TRUE)
+      
+      bootdat <- newdat[sel.boot, ]
+      
+      # exclude outlying data points from trajectory data-cloud ... 
+      # as outliers are likely to throw out model-fitting
+      bp <- boxplot(bootdat$similarity, print=FALSE)
+      sel.outlier <- which(bootdat$similarity %in% bp$out)
+      if (length(sel.outlier)>0) {
+        bootdat <- bootdat[-sel.outlier, ]
+      }
+      
+      #plot(bootdat$group_num, bootdat$similarity)
+      
+      model <- drm(similarity ~ group_num , fct = DRC.logCurve(), # DRC.negExp()
+                   data = bootdat)
+      
+      new_preds$similarity <- predict(model, new_preds )
+      new_preds$pred_type <- this_pred_model_type
+      
+      y <- data.frame(group_num=1:500, sim_pred=NA)
+      y$sim_pred <- predict(model, y )
+      y$reached_target <- y$sim_pred >= this_ref_median
+      #plot(y$group_num, y$sim_pred)
+      row.names(y)
+      
+      sel <- which(y$reached_target == TRUE)
+      
+      if (length(sel) > 0) {
+        years_to_ref <- min(sel)
+      } else {
+        years_to_ref <- NA
+      }
+      new_preds$pred_time_to_ref_median <- years_to_ref
+      
+      # add predictions from end of last year to 40 years ...
+      max_year <- max(new_preds$group_num)
+      year <- max_year + 1
+      while (year < 40) {
+        new_preds <- rbind(new_preds, new_preds[ dim(new_preds)[1], ])
+        year <- year + 1
+        new_preds$group_num[dim(new_preds)[1]] <- year
+        new_preds$group[dim(new_preds)[1]] <- as.character( new_preds$group_num[dim(new_preds)[1]] )
+        new_preds$similarity[dim(new_preds)[1]] <- y[ year, "sim_pred"]
+      }
+      
+      pred_models_boot <- rbind(pred_models_boot, new_preds)
+      
+    }# END bootstrap
+    
+    print(paste0("completed study: ",studies[i],"; metric: ",metrics[j],"; pred_type: ",pred_types[k]))
+    
+    #} # END pred_types
+  } # END metrics
+} # END studies
+
+
+# remove NA first row
+pred_models_boot <- pred_models_boot[-1, ]
+
+unique(pred_models_boot$facet_x)
+pred_models_boot$facet_x <- factor(pred_models_boot$facet_x,
+                                   levels = c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level"),
+                                   ordered = TRUE)
+
+dim(pred_models_boot) # 8000   10
+
+
+# correct time prediction to ref; update NA to (>) 500 yrs
+sel <- which(is.na(pred_models_boot$pred_time_to_ref_median))
+pred_models_boot$pred_time_to_ref_median[sel] <- 500
+
+
+pred_models_boot$group <- factor(pred_models_boot$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
+str(pred_models_boot)
+# 'data.frame':	8000 obs. of  10 variables:
+#   $ study                  : chr  "Alcoa" "Alcoa" "Alcoa" "Alcoa" ...
+# $ facet_x                : Ord.factor w/ 2 levels "Bray-Curtis\nASV-level"<..: 1 1 1 1 1 1 1 1 1 1 ...
+# $ study_and_metric       : chr  "Alcoa__Bray-Curtis\nASV-level" "Alcoa__Bray-Curtis\nASV-level" "Alcoa__Bray-Curtis\nASV-level" "Alcoa__Bray-Curtis\nASV-level" ...
+# $ group                  : Ord.factor w/ 47 levels "0"<"1"<"2"<"3"<..: 3 9 15 18 26 30 32 33 34 35 ...
+# $ group_num              : num  2 8 14 17 25 29 31 32 33 34 ...
+# $ similarity             : num  9.39 21.15 25.9 27.54 30.82 ...
+# $ boot_no                : int  1 1 1 1 1 1 1 1 1 1 ...
+# $ ref_median             : num  35.6 35.6 35.6 35.6 35.6 ...
+# $ pred_time_to_ref_median: num  44 44 44 44 44 44 44 44 44 44 ...
+# $ pred_type              : chr  "logarithmic" "logarithmic" "logarithmic" "logarithmic" ...
+
+str(traj_data)
+# 'data.frame':	1920 obs. of  9 variables:
+#   $ samp        : chr  "X39041" "X39041" "X39041" "X39041" ...
+# $ compare_with: chr  "X39043" "X39047" "X39051" "X39055" ...
+# $ similarity  : num  13.1 13.4 14.3 11.4 13.7 ...
+# $ group       : Ord.factor w/ 47 levels "0"<"1"<"2"<"3"<..: 3 3 3 3 3 3 3 3 3 3 ...
+# $ dist_measure: chr  "Bray-Curtis" "Bray-Curtis" "Bray-Curtis" "Bray-Curtis" ...
+# $ tax_level   : chr  "ASV (with Tree)" "ASV (with Tree)" "ASV (with Tree)" "ASV (with Tree)" ...
+# $ study       : chr  "Alcoa" "Alcoa" "Alcoa" "Alcoa" ...
+# $ corrected   : chr  "no" "no" "no" "no" ...
+# $ facet_x     : Ord.factor w/ 2 levels "Bray-Curtis\nASV-level"<..: 1 1 1 1 1 1 1 1 1 1 ...
+
+temp.traj_data <- traj_data
+temp.pred_models_boot <- pred_models_boot
+
+unique(traj_data$study) # "Alcoa"         "Iluka-Eneabba"      "South32\n(exclude southernmost)"
+unique(traj_data$facet_x) # Bray-Curtis\nASV-level                       At least 10% non-zero - Aitchison\nASV-level
+
+study_names <- c(
+  Alcoa="Huntly",
+  `Iluka-Eneabba`="Eneabba",
+  `South32\n(exclude southernmost)`="Worsley\n(excl. southern)"
+)
+
+facet_x_names <- c(
+  `Bray-Curtis\nASV-level`="Bray-Curtis",
+  `At least 10% non-zero - Aitchison\nASV-level`="Aitchison"
+)
+
+
+
+
+p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
+  geom_line(data=pred_models_boot, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
+  geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
+  
+  #geom_jitter(size=0.7,width = 0.15, alpha=0.2) +
+  
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
+  
+  theme_bw() +
+  geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
+  scale_x_discrete(drop=FALSE, expand = c(0.05,0.05),
+                   labels = x_labels) +
+  theme(axis.text.x  = element_text(angle=90,hjust=1, vjust=0.5), # 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        #axis.ticks.x = element_line(linetype = 0)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
+  ) +
+  labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
+  facet_grid(rows = vars(study), cols = vars(facet_x), scales = "fixed", labeller = labeller(study = study_names, facet_x = facet_x_names) ) # study_labeller   as_labeller(study_names)
+
+p
+
+#ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--AlcoaHuntly-IlukaEneabba-South32Worsley--ASV-Bray-Aitchison-with-Preds.tiff"), width = 12, height = 16, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.965,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Restoration-trajectories--AlcoaHuntly-IlukaEneabba-South32Worsley--ASV-Bray-Aitchison-with-Preds-PARTA.tiff"), width = 12, height = 16, units = "cm", res = 600, compression = "lzw",type="cairo")
+
+
+
+
+
+
+
+str(traj_data)
+unique(traj_data$study) # "Alcoa"         "Iluka-Eneabba"       "South32\n(exclude southernmost)"
+unique(traj_data$group) # use "ref" only
+unique(traj_data$facet_x)
+# [1] Bray-Curtis\nASV-level      At least 10% non-zero - Aitchison\nASV-level
+
+## Huntly-Alcoa
+sel <- which(traj_data$study == "Alcoa")
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "Bray-Curtis\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 22.38   31.28   35.55   35.79   39.93   60.91 
+sel <- which(traj_data$study == "Alcoa")
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "At least 10% non-zero - Aitchison\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 11.74   18.13   22.10   22.98   27.76   44.23 
+
+
+## "Iluka-Eneabba"
+sel <- which(traj_data$study == "Iluka-Eneabba")
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "Bray-Curtis\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 21.08   26.33   29.82   29.45   32.40   39.76 
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "At least 10% non-zero - Aitchison\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 10.09   17.25   20.69   19.79   22.32   29.65 
+
+
+## "South32"
+sel <- which(traj_data$study == "South32\n(exclude southernmost)")
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "Bray-Curtis\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 25.62   36.02   38.21   38.23   42.93   46.11 
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "At least 10% non-zero - Aitchison\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 12.22   18.39   21.61   21.55   24.73   28.57
+
+
+
+str(pred_models_boot)
+
+unique(pred_models_boot$study_and_metric)
+# [1] "Alcoa__Bray-Curtis\nASV-level"                                                
+# [2] "Alcoa__At least 10% non-zero - Aitchison\nASV-level"                          
+# [3] "Iluka-Eneabba__Bray-Curtis\nASV-level"                                        
+# [4] "Iluka-Eneabba__At least 10% non-zero - Aitchison\nASV-level"                  
+# [5] "South32\n(exclude southernmost)__Bray-Curtis\nASV-level"                      
+# [6] "South32\n(exclude southernmost)__At least 10% non-zero - Aitchison\nASV-level"
+
+pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
+                                            levels = c(
+                                              "Alcoa__Bray-Curtis\nASV-level"                                       ,         
+                                              "Alcoa__At least 10% non-zero - Aitchison\nASV-level"                  ,        
+                                              "Iluka-Eneabba__Bray-Curtis\nASV-level"                                 ,       
+                                              "Iluka-Eneabba__At least 10% non-zero - Aitchison\nASV-level"            ,      
+                                              "South32\n(exclude southernmost)__Bray-Curtis\nASV-level"                 ,     
+                                              "South32\n(exclude southernmost)__At least 10% non-zero - Aitchison\nASV-level"
+                                              
+                                            ))
+
+dim(pred_models_boot) # 8000    10
+names(pred_models_boot)
+# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                  
+# [5] "group_num"               "similarity"              "boot_no"                 "ref_median"             
+# [9] "pred_time_to_ref_median" "pred_type" 
+
+
+
+unique( pred_models_boot$study)
+#  "Alcoa"     "Iluka-Eneabba"    "South32\n(exclude southernmost)"
+
+levels( pred_models_boot$facet_x )
+# "Bray-Curtis\nASV-level"     "At least 10% non-zero - Aitchison\nASV-level"
+
+
+df <- data.frame(study = rep(c("Alcoa", "Iluka-Eneabba", "South32\n(exclude southernmost)"),each=200),
+                 facet_x = rep(rep(c("Bray-Curtis\nASV-level", "At least 10% non-zero - Aitchison\nASV-level"),each=100),times=3),
+                 boot_no = rep(1:100, times=6),
+                 pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
+  #i<-1
+  this_study <- df$study[i]
+  this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study == this_study & pred_models_boot$facet_x == this_measure & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study: ", this_study," ; measure: ",this_measure," ; boot_no: ",this_boot," ; i = ",i))
+}
+
+
+df.temp <- df
+
+## plot time to target
+
+names(pred_models_boot)
+# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
+# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"
+
+
+
+##df <- pred_models_boot
+unique(df$study) #  "Alcoa"                           "Iluka-Eneabba"                   "South32\n(exclude southernmost)"
+
+df$study <- factor(df$study,
+                   levels = c( "Alcoa" , "Iluka-Eneabba", "South32\n(exclude southernmost)" ),
+                   labels = c("Huntly", "Eneabba", "Worsley\n(excl. southern)"), ordered = TRUE)
+unique(df$facet_x)
+# "Bray-Curtis\nASV-level"      "At least 10% non-zero - Aitchison\nASV-level"
+df$facet_x <- factor(df$facet_x, 
+                     levels = c("Bray-Curtis\nASV-level" ,  "At least 10% non-zero - Aitchison\nASV-level"),
+                     labels = c("Bray-\nCurtis", "Aitchison"), ordered = TRUE)
+
+p <- ggplot(data=df, aes(x=facet_x, y=pred_time_to_ref_median)) +  # , color = facet_x
+  #geom_boxplot() +
+  #geom_boxplot(outlier.shape = NA, width = 2.5) +
+  #geom_jitter(size=0.5,width = 0.5, alpha=0.2, color = "darkgrey") +
+  geom_violin()+
+  geom_boxplot(width=0.12, outlier.shape = NA) +
+  theme_bw() +
+  facet_wrap(vars(study) , nrow=1) +
+  theme(#axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.background = element_blank()#,
+        
+  ) +
+  labs(x = NULL, y = "Predicted recovery time (yr)")
+p
+
+#ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Jaccard-Bray-UnWtUniFrac-WtUniFrac-facet-study.tiff"), width = 16, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.965,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-recovery-time--AlcoaHuntly-IlukaEneabba-South32Worsley-exclude-sthn---ASV-Bray-Aitchison-with-Preds-PARTB.tiff"), width = 11.8, height = 6, units = "cm", res = 600, compression = "lzw",type="cairo")
+
+
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study) # Huntly      Eneabba     Worsley\n(excl. southern)
+unique(df$facet_x) # Bray-\nCurtis Aitchison
+
+## Huntly - Bray-\nCurtis
+sel1 <- which(df$study == "Huntly" & df$facet_x == "Bray-\nCurtis") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Huntly ; Bray-\nCurtis - Recovery time: median (2.5th, 97.5th percentile)] : 43 (39, 50), n = 100"
+
+## Huntly - Aitchison
+sel2 <- which(df$study == "Huntly" & df$facet_x == "Aitchison") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Huntly ; Aitchison - Recovery time: median (2.5th, 97.5th percentile)] : 31 (27, 36), n = 100"
+
+## i.e. for Huntly, sig diff between Bray-Curtis and Aitchison ?? - check 95% prediction interval for difference
+diff <- data.frame(bray=df$pred_time_to_ref_median[sel1], aitch=df$pred_time_to_ref_median[sel2])
+diff$diff <- diff$bray - diff$aitch
+quantile(diff$diff, probs = c(0.025, 0.975), na.rm = TRUE)
+# 2.5% 97.5% 
+#   7    18 
+
+## Eneabba - Bray-\nCurtis
+sel1 <- which(df$study == "Eneabba" & df$facet_x == "Bray-\nCurtis") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Eneabba ; Bray-\nCurtis - Recovery time: median (2.5th, 97.5th percentile)] : 60 (51, 72.525), n = 100"
+
+
+## Eneabba - Aitchison
+sel2 <- which(df$study == "Eneabba" & df$facet_x == "Aitchison") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Eneabba ; Aitchison - Recovery time: median (2.5th, 97.5th percentile)] : 49.5 (44, 59), n = 100"
+
+## For Eneabba the 95% prediction intervals overlap, - check 95% prediction interval for difference
+diff <- data.frame(bray=df$pred_time_to_ref_median[sel1], aitch=df$pred_time_to_ref_median[sel2])
+diff$diff <- diff$bray - diff$aitch
+quantile(diff$diff, probs = c(0.025, 0.975), na.rm = TRUE)
+#   2.5%  97.5% 
+# -3.000 22.525 
+
+
+## Worsley\n(excl. southern) - Bray-\nCurtis
+sel1 <- which(df$study == "Worsley\n(excl. southern)" & df$facet_x == "Bray-\nCurtis") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Worsley\n(excl. southern) ; Bray-\nCurtis - Recovery time: median (2.5th, 97.5th percentile)] : 44 (37.475, 60), n = 100"
+
+
+## Worsley\n(excl. southern) - Aitchison
+sel2 <- which(df$study == "Worsley\n(excl. southern)" & df$facet_x == "Aitchison") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Worsley\n(excl. southern) ; Aitchison - Recovery time: median (2.5th, 97.5th percentile)] : 53 (43, 70.7249999999999), n = 100"
+
+## For Worsley the 95% prediction intervals for recovery time overlap, therefore not significantly different
+diff <- data.frame(bray=df$pred_time_to_ref_median[sel1], aitch=df$pred_time_to_ref_median[sel2])
+diff$diff <- diff$bray - diff$aitch
+quantile(diff$diff, probs = c(0.025, 0.975), na.rm = TRUE)
+#   2.5%  97.5% 
+# -24.05   7.10 
+
+
+## re-do plot with 95% PI diff values:
+
+# add annotation
+annotation_df <- data.frame(
+  study = c("Huntly", "Eneabba", "Worsley\n(excl. southern)"),
+  start=c("Bray-\nCurtis","Bray-\nCurtis","Bray-\nCurtis"),
+  end = c("Aitchison","Aitchison","Aitchison"),
+  y = c(57, 98, 81),
+  #label = c("95% PI diff = [7, 18]", "95% PI diff = [-3, 23]", "95% PI diff = [-24, 7]"), stringsAsFactors = FALSE)
+  #label = c("* (\u0394 95% PI = [7, 18])", "N.S. (\u0394 95% PI = [-3, 23])", "N.S. (\u0394 95% PI = [-24, 7])"), stringsAsFactors = FALSE)
+  label = c("\u0394 95% PI = [7, 18]", "\u0394 95% PI = [-3, 23]", "\u0394 95% PI = [-24, 7]"), stringsAsFactors = FALSE)
+
+str(annotation_df)
+# ensure no conflict in factor levels 
+annotation_df$study <- factor(annotation_df$study, levels = c("Huntly", "Eneabba", "Worsley\n(excl. southern)"), ordered = TRUE)
+annotation_df$start <- factor(annotation_df$start, levels = c("Bray-\nCurtis", "Aitchison"), ordered = TRUE )
+annotation_df$end <- factor(annotation_df$end, levels = c("Bray-\nCurtis", "Aitchison"), ordered = TRUE )
+
+
+
+p <- ggplot(data=df, aes(x=facet_x, y=pred_time_to_ref_median)) +  # , color = facet_x
+  #geom_boxplot() +
+  #geom_boxplot(outlier.shape = NA, width = 2.5) +
+  #geom_jitter(size=0.5,width = 0.5, alpha=0.2, color = "darkgrey") +
+  geom_violin()+
+  geom_boxplot(width=0.12, outlier.shape = NA) +
+  theme_bw() +
+  geom_signif(data = annotation_df, 
+              aes(xmin=start, xmax=end, annotations=label, y_position=y),
+              tip_length = 0, margin_top = 1, vjust = -0.5, textsize = 2.5, manual = TRUE) + #
+  facet_wrap(vars(study) , nrow=1) +
+  theme(#axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text.x = element_text(size = rel(1.1)),
+    strip.background = element_blank()#,
+    
+  ) +
+  labs(x = NULL, y = "Predicted recovery time (yr)") +
+  ylim(20,110)
+  
+p
+
+#ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Jaccard-Bray-UnWtUniFrac-WtUniFrac-facet-study.tiff"), width = 16, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.965,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-recovery-time--AlcoaHuntly-IlukaEneabba-South32Worsley-exclude-sthn---ASV-Bray-Aitchison-with-Preds-and-Diff-PARTB.tiff"), width = 11.8, height = 6, units = "cm", res = 600, compression = "lzw",type="cairo")
+
+
+#-------------------------
 
 
 #### facet_grid trajectory plots + predict time to reach ref:
@@ -20156,6 +22278,27 @@ for (i in 1:length(studies)) {
     
     newdat <- newdat[-sel.na, ]
     
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
+    
     # prep output dataframe for prediction model to populate
     sel.dup <- which(duplicated(newdat$group)==TRUE)
     new_preds <- data.frame(matrix( nrow=dim(newdat[-sel.dup, ])[1], ncol = length(names(pred_models_boot.temp)) ))
@@ -20179,8 +22322,6 @@ for (i in 1:length(studies)) {
     
     # NOW using "logarithmic" model only !!!!!
     
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
     
     for (b in 1:100) {
       #b<-1
@@ -20252,39 +22393,21 @@ pred_models_boot$facet_x <- factor(pred_models_boot$facet_x,
                                                  "Unweighted UniFrac\nASV-level", "Weighted UniFrac\nASV-level"),
                                       ordered = TRUE)
 
-dim(pred_models_boot) # 17200    10
+dim(pred_models_boot) # 16500    10
 
 
 # correct time prediction to ref; update NA to (>) 500 yrs
 sel <- which(is.na(pred_models_boot$pred_time_to_ref_median))
-pred_models_boot$pred_time_to_ref_median[sel] <- 500
+#pred_models_boot$pred_time_to_ref_median[sel] <- 500
 
 
 pred_models_boot$group <- factor(pred_models_boot$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
 str(pred_models_boot)
-# 'data.frame':	17200 obs. of  10 variables:
-#   $ study                  : chr  "Alcoa" "Alcoa" "Alcoa" "Alcoa" ...
-# $ facet_x                : Ord.factor w/ 4 levels "Jaccard\nASV-level"<..: 1 1 1 1 1 1 1 1 1 1 ...
-# $ study_and_metric       : chr  "Alcoa__Jaccard\nASV-level" "Alcoa__Jaccard\nASV-level" "Alcoa__Jaccard\nASV-level" "Alcoa__Jaccard\nASV-level" ...
-# $ group                  : Ord.factor w/ 47 levels "0"<"1"<"2"<"3"<..: 3 9 15 18 26 30 32 33 34 35 ...
-# $ group_num              : num  2 8 14 17 25 29 31 32 33 34 ...
-# $ similarity             : num  8.82 13.39 15.24 15.88 17.15 ...
-# $ boot_no                : int  1 1 1 1 1 1 1 1 1 1 ...
-# $ ref_median             : num  20.3 20.3 20.3 20.3 20.3 ...
-# $ pred_time_to_ref_median: num  66 66 66 66 66 66 66 66 66 66 ...
-# $ pred_type              : chr  "logarithmic" "logarithmic" "logarithmic" "logarithmic" ...
+# 'data.frame':	16500 obs. of  10 variables:
 
 str(traj_data)
 # 'data.frame':	3996 obs. of  9 variables:
-#   $ samp        : chr  "X39041" "X39041" "X39041" "X39041" ...
-# $ compare_with: chr  "X39043" "X39047" "X39051" "X39055" ...
-# $ similarity  : num  11.2 11.9 11.6 10.2 12.1 ...
-# $ group       : Ord.factor w/ 47 levels "0"<"1"<"2"<"3"<..: 3 3 3 3 3 3 3 3 3 3 ...
-# $ dist_measure: chr  "Jaccard" "Jaccard" "Jaccard" "Jaccard" ...
-# $ tax_level   : chr  "ASV (with Tree)" "ASV (with Tree)" "ASV (with Tree)" "ASV (with Tree)" ...
-# $ study       : chr  "Alcoa" "Alcoa" "Alcoa" "Alcoa" ...
-# $ corrected   : chr  "no" "no" "no" "no" ...
-# $ facet_x     : Ord.factor w/ 4 levels "Jaccard\nASV-level"<..: 1 1 1 1 1 1 1 1 1 1 ...
+
 
 temp.traj_data <- traj_data
 temp.pred_models_boot <- pred_models_boot
@@ -20304,8 +22427,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
   geom_line(data=pred_models_boot, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
   geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
   
-  geom_boxplot(outlier.shape = NA, width = 2) +
-  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
   
   theme_bw() +
   geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
@@ -20317,7 +22440,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
         #axis.ticks.x = element_line(linetype = 0)
         axis.ticks.x = element_line(linetype = x_ticks),
         strip.text.x = element_text(size = rel(1.1)),
-        strip.text.y = element_text(size = rel(1.1))
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
   ) +
   labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
   facet_grid(rows = vars(study), cols = vars(facet_x), scales = "fixed", labeller = labeller(study = study_names) ) # study_labeller   as_labeller(study_names)
@@ -20325,6 +22449,61 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
 p
 
 ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--AlcoaHuntly-IlukaEneabba-South32Worsley--ASV-Jaccard-Bray-UnWt-Wt-UniFrac-with-Preds.tiff"), width = 18, height = 16, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+
+# # # # # Alcoa Huntly Bray-Curtis ONLY
+
+# traj_data$study == "Alcoa"
+# traj_data$facet_x == "Bray-Curtis\nASV-level"
+# anno_data$study == "Alcoa"
+# anno_data$facet_x == "Bray-Curtis\nASV-level"
+# href_lines$study == "Alcoa"
+# href_lines$facet_x == "Bray-Curtis\nASV-level"
+# pred_models_boot$study == "Alcoa"
+# pred_models_boot$facet_x == "Bray-Curtis\nASV-level"
+
+dt <- filter(traj_data, study == "Alcoa" & facet_x == "Bray-Curtis\nASV-level")
+da <- filter(anno_data, study == "Alcoa" & facet_x == "Bray-Curtis\nASV-level")
+dh <- filter(href_lines, study == "Alcoa" & facet_x == "Bray-Curtis\nASV-level")
+dp <- filter(pred_models_boot, study == "Alcoa" & facet_x == "Bray-Curtis\nASV-level")
+
+
+#p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
+p <- ggplot(data=dt, aes(x=group, y=similarity)) +
+  #ggtitle("Rehabilitation trajectory (Soil bacterial 16S rRNA ASVs)") +
+  ggtitle("Post-mining rehabilitation trajectory (soil bacteria)") +
+  #geom_line(data=pred_models_boot, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
+  geom_line(data=dp, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
+  #geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
+  geom_hline(data = dh, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
+  geom_boxplot(outlier.shape = NA, width = 2) +
+  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  
+  theme_bw() +
+  #geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
+  geom_text(data=da, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2) + # , size=2.75
+  scale_x_discrete(drop=FALSE, expand = c(0.05,0.05),
+                   labels = x_labels) +
+  theme(axis.text.x  = element_text(angle=0,hjust=0.5, vjust=0.5), # 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        #axis.ticks.x = element_line(linetype = 0)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.text.y = element_text(size = rel(1.1))
+  ) +
+  labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (% Bray-Curtis)") # +
+  #facet_grid(rows = vars(study), cols = vars(facet_x), scales = "fixed", labeller = labeller(study = study_names) ) # study_labeller   as_labeller(study_names)
+
+p
+
+ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--Huntly-Bray-only-example-soil-bacteria.tiff"), width = 14, height = 10, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+
+
+
+
+
 
 
 
@@ -20411,57 +22590,34 @@ pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
                                               "South32__Bray-Curtis\nASV-level"             , "South32__Unweighted UniFrac\nASV-level"      , "South32__Weighted UniFrac\nASV-level"  
                                             ))
 
-dim(pred_models_boot) # 17200    10
+dim(pred_models_boot) # 16500    10
 
-dat.sum <- pred_models_boot
-head(dat.sum)
-# study            facet_x          study_and_metric group group_num similarity boot_no ref_median pred_time_to_ref_median
-# 11 Alcoa Jaccard\nASV-level Alcoa__Jaccard\nASV-level     2         2   8.819282       1   20.34483                      66
-# 2  Alcoa Jaccard\nASV-level Alcoa__Jaccard\nASV-level     8         8  13.392202       1   20.34483                      66
-# 3  Alcoa Jaccard\nASV-level Alcoa__Jaccard\nASV-level    14        14  15.238187       1   20.34483                      66
-# 4  Alcoa Jaccard\nASV-level Alcoa__Jaccard\nASV-level    17        17  15.878643       1   20.34483                      66
-# 5  Alcoa Jaccard\nASV-level Alcoa__Jaccard\nASV-level    25        25  17.150814       1   20.34483                      66
-# 6  Alcoa Jaccard\nASV-level Alcoa__Jaccard\nASV-level    29        29  17.640402       1   20.34483                      66
-# pred_type
-# 11 logarithmic
-# 2  logarithmic
-# 3  logarithmic
-# 4  logarithmic
-# 5  logarithmic
-# 6  logarithmic
 
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
-  #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"],")"))
-}
-# [1] "Alcoa__Jaccard\nASV-level: 60.5 (51, 79)"
-# [1] "Alcoa__Bray-Curtis\nASV-level: 43 (39, 49)"
-# [1] "Alcoa__Unweighted UniFrac\nASV-level: 121.5 (81.9, 237.549999999999)"
-# [1] "Alcoa__Weighted UniFrac\nASV-level: 42 (38.95, 49)"
-# [1] "Iluka-Eneabba__Jaccard\nASV-level: 97 (73.9, 133.45)"
-# [1] "Iluka-Eneabba__Bray-Curtis\nASV-level: 93.5 (69, 131.35)"
-# [1] "Iluka-Eneabba__Unweighted UniFrac\nASV-level: 65 (49.95, 118.05)"
-# [1] "Iluka-Eneabba__Weighted UniFrac\nASV-level: 69.5 (47, 153.299999999999)"
-# [1] "South32__Jaccard\nASV-level: 131.5 (68.8, 313.25)"
-# [1] "South32__Bray-Curtis\nASV-level: 103.5 (68.9, 173.549999999999)"
-# [1] "South32__Unweighted UniFrac\nASV-level: 60 (44, 91.3499999999997)"
-# [1] "South32__Weighted UniFrac\nASV-level: 29 (24, 38)"
-
+unique( pred_models_boot$study)
+#  "Alcoa"         "Iluka-Eneabba" "South32"  
 
 levels( pred_models_boot$facet_x )
-# "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"        "Unweighted UniFrac\nASV-level" "Weighted UniFrac\nASV-level"  
+# "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"        "Unweighted UniFrac\nASV-level" "Weighted UniFrac\nASV-level"
 
 
+df <- data.frame(study = rep(c("Alcoa" , "Iluka-Eneabba" , "South32"  ),each=400),
+                 facet_x = rep(rep(c("Jaccard\nASV-level", "Bray-Curtis\nASV-level","Unweighted UniFrac\nASV-level", "Weighted UniFrac\nASV-level"),each=100),times=3),
+                 boot_no = rep(1:100, times=12),
+                 pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
+  #i<-1
+  this_study <- df$study[i]
+  this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study == this_study & pred_models_boot$facet_x == this_measure & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study: ", this_study," ; measure: ",this_measure," ; boot_no: ",this_boot," ; i = ",i))
+}
+
+
+df.temp <- df
 
 
 ## plot time to target
@@ -20472,907 +22628,170 @@ names(pred_models_boot)
 
 
 
-df <- pred_models_boot
-unique(df$study) # "Alcoa"         "Iluka-Eneabba" "South32"  
+##df <- pred_models_boot
+unique(df$study) #  "Alcoa"                           "Iluka-Eneabba"                   "South32\n(exclude southernmost)"
+
 df$study <- factor(df$study,
-                   levels = c("Alcoa", "Iluka-Eneabba", "South32" ),
+                   levels = c( "Alcoa" , "Iluka-Eneabba", "South32" ),
                    labels = c("Huntly", "Eneabba", "Worsley"), ordered = TRUE)
-df$facet_x
-# Levels: Jaccard\nASV-level < Bray-Curtis\nASV-level < Unweighted UniFrac\nASV-level < Weighted UniFrac\nASV-level
+unique(df$facet_x)
+# "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"        "Unweighted UniFrac\nASV-level" "Weighted UniFrac\nASV-level" 
 df$facet_x <- factor(df$facet_x, 
-                     levels = c("Jaccard\nASV-level",
-                                "Bray-Curtis\nASV-level",
-                                "Unweighted UniFrac\nASV-level",
-                                "Weighted UniFrac\nASV-level"),
-                     labels = c("Jaccard",
-                                "Bray-Curtis",
-                                "Unweighted\nUniFrac",
-                                "Weighted\nUniFrac"), ordered = TRUE)
+                     levels = c("Jaccard\nASV-level", "Bray-Curtis\nASV-level","Unweighted UniFrac\nASV-level", "Weighted UniFrac\nASV-level"),
+                     labels = c("Jaccard", "Bray-Curtis","Unweighted\nUniFrac", "Weighted\nUniFrac"), ordered = TRUE)
+                     #levels = c("Bray-Curtis\nASV-level" ,  "At least 10% non-zero - Aitchison\nASV-level"),
+                     #labels = c("Bray-\nCurtis", "Aitchison"), ordered = TRUE)
 
 p <- ggplot(data=df, aes(x=facet_x, y=pred_time_to_ref_median)) +  # , color = facet_x
   geom_boxplot() +
+  #geom_boxplot(outlier.shape = NA, width = 2.5) +
+  #geom_jitter(size=0.5,width = 0.5, alpha=0.2, color = "darkgrey") +
+  
+  #geom_violin()+
+  #geom_boxplot(width=0.12, outlier.shape = NA) +
+  
   theme_bw() +
   facet_wrap(vars(study) , nrow=1) +
-  theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.text.x = element_text(size = rel(1.1))
+  theme(
+    
+    axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
+    
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text.x = element_text(size = rel(1.1)),
+    strip.background = element_blank()#,
+    
   ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)")
+  labs(x = NULL, y = "Predicted recovery time (yr)")
 p
 
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Jaccard-Bray-UnWtUniFrac-WtUniFrac-facet-study.tiff"), width = 16, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+#grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.965,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-recovery-time--AlcoaHuntly-IlukaEneabba-South32Worsley---ASV-Jaccard-Bray-UnWtUniFrac-WtUniFrac-facet-study-PARTa.tiff"), width = 16, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
+
+# ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Jaccard-Bray-UnWtUniFrac-WtUniFrac-facet-study.tiff"), width = 16, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study) # Huntly  Eneabba Worsley
+unique(df$facet_x) # Jaccard             Bray-Curtis         Unweighted\nUniFrac     Weighted\nUniFrac
+
+## Huntly - Bray-Curtis
+sel1 <- which(df$study == "Huntly" & df$facet_x == "Bray-Curtis") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Huntly ; Bray-Curtis - Recovery time: median (2.5th, 97.5th percentile)] : 43 (39, 50), n = 100"
+
+## Huntly - Jaccard
+sel2 <- which(df$study == "Huntly" & df$facet_x == "Jaccard") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Huntly ; Jaccard - Recovery time: median (2.5th, 97.5th percentile)] : 60.5 (51, 81.05), n = 100"
+
+## Huntly - Unweighted\nUniFrac
+sel1 <- which(df$study == "Huntly" & df$facet_x == "Unweighted\nUniFrac") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Huntly ; Unweighted\nUniFrac - Recovery time: median (2.5th, 97.5th percentile)] : 121.5 (78.475, 316.175), n = 100"
+
+## Huntly - Weighted\nUniFrac
+sel2 <- which(df$study == "Huntly" & df$facet_x == "Weighted\nUniFrac") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Huntly ; Weighted\nUniFrac - Recovery time: median (2.5th, 97.5th percentile)] : 42 (38, 50.525), n = 100"
+
+
+
+
+
+
+## Eneabba - Bray-Curtis
+sel1 <- which(df$study == "Eneabba" & df$facet_x == "Bray-Curtis") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Eneabba ; Bray-Curtis - Recovery time: median (2.5th, 97.5th percentile)] : 60 (51, 72.525), n = 100"
+
+
+## Eneabba - Jaccard
+sel2 <- which(df$study == "Eneabba" & df$facet_x == "Jaccard") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Eneabba ; Jaccard - Recovery time: median (2.5th, 97.5th percentile)] : 61 (52.95, 73), n = 100"
+
+
+## Eneabba - Unweighted\nUniFrac
+sel1 <- which(df$study == "Eneabba" & df$facet_x == "Unweighted\nUniFrac") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Eneabba ; Unweighted\nUniFrac - Recovery time: median (2.5th, 97.5th percentile)] : 53 (41, 86.525), n = 100"
+
+
+## Eneabba - Weighted\nUniFrac
+sel2 <- which(df$study == "Eneabba" & df$facet_x == "Weighted\nUniFrac") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Eneabba ; Weighted\nUniFrac - Recovery time: median (2.5th, 97.5th percentile)] : 41 (34, 69.3999999999999), n = 100"
+
+
+
+
+## Worsley - Bray-Curtis
+sel1 <- which(df$study == "Worsley" & df$facet_x == "Bray-Curtis") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Worsley ; Bray-Curtis - Recovery time: median (2.5th, 97.5th percentile)] : 39 (34, 46), n = 100"
+
+
+## Worsley - Jaccard
+sel2 <- which(df$study == "Worsley" & df$facet_x == "Jaccard") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Worsley ; Jaccard - Recovery time: median (2.5th, 97.5th percentile)] : 36 (31.475, 43), n = 100"
+
+
+## Worsley - Unweighted\nUniFrac
+sel1 <- which(df$study == "Worsley" & df$facet_x == "Unweighted\nUniFrac") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel1])," ; ",unique(df$facet_x[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Worsley ; Unweighted\nUniFrac - Recovery time: median (2.5th, 97.5th percentile)] : 31 (27, 36), n = 100"
+
+
+## Worsley - Weighted\nUniFrac
+sel2 <- which(df$study == "Worsley" & df$facet_x == "Weighted\nUniFrac") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study[sel2])," ; ",unique(df$facet_x[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Worsley ; Weighted\nUniFrac - Recovery time: median (2.5th, 97.5th percentile)] : 29 (23, 42.525), n = 100"
+
+
 
 
 #-------------------------
-
-
-#### facet_grid trajectory plots + predict time to reach ref:
-##   ASV -- Jaccard + Bray-Curtis -- Iluka-Eneabba only - with & without youngest rehab_age group
-#-------------------------
-
-names(df_results)
-
-
-names(df_results[[1]])
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"    
-# [7] "group"          "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"  
-
-
-keep_results <- c("Iluka-Eneabba-Jaccard-ASV-withTree" ,           "Iluka-Eneabba-Bray-ASV-withTree" ,
-                  "Iluka-Eneabba-Jaccard-ASV-withTree-exclude7yr", "Iluka-Eneabba-Bray-ASV-withTree-exclude7yr"
-                  )
-
-
-keep_cols <- c("samp","compare_with","similarity","group","dist_measure","tax_level","study","corrected","facet_x")
-traj_data <- df_results[[ keep_results[1] ]][ ,keep_cols]
-for (i in 2:length(keep_results)) {
-  traj_data <- rbind(traj_data,df_results[[ keep_results[i] ]][ ,keep_cols])
-  print(paste0("completed ",i))
-}
-dim(traj_data) # 864    9
-unique(traj_data$facet_x) # "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"        "Unweighted UniFrac\nASV-level" "Weighted UniFrac\nASV-level" 
-
-keep_cols_anno <- c("group","sig_letter","similarity","dist_measure","tax_level","study","corrected","facet_x")
-anno_data <- df_anno[[ keep_results[1] ]][ ,keep_cols_anno]
-for (i in 2:length(keep_results)) {
-  anno_data <- rbind(anno_data,df_anno[[ keep_results[i] ]][ ,keep_cols_anno])
-  print(paste0("completed ",i))
-}
-dim(anno_data) # 30  8
-class(anno_data$facet_x) # "character"
-unique(anno_data$facet_x) # "character"
-# [1] "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"
-anno_data$facet_x <- factor(anno_data$facet_x,
-                            levels = c("Jaccard\nASV-level","Bray-Curtis\nASV-level"),
-                            ordered = TRUE)
-
-unique(traj_data$facet_x)
-# [1] "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"
-class(traj_data$facet_x) # "character"
-traj_data$facet_x <- factor(traj_data$facet_x,
-                            levels = c("Jaccard\nASV-level","Bray-Curtis\nASV-level"),
-                            ordered = TRUE)
-
-unique(traj_data$study)
-# [1] "Iluka-Eneabba"                         "Iluka-Eneabba\n(exclude 7-year rehab)"
-class(traj_data$study) # "character"
-traj_data$study <- factor(traj_data$study,
-                            levels = c("Iluka-Eneabba", "Iluka-Eneabba\n(exclude 7-year rehab)"),
-                            ordered = TRUE)
-
-unique(anno_data$study)
-# [1] "Iluka-Eneabba"                         "Iluka-Eneabba\n(exclude 7-year rehab)"
-class(anno_data$study) # "character"
-anno_data$study <- factor(anno_data$study,
-                          levels = c("Iluka-Eneabba", "Iluka-Eneabba\n(exclude 7-year rehab)"),
-                          ordered = TRUE)
-
-class(traj_data$group)
-# "ordered" "factor" 
-
-traj_data$group <- factor(traj_data$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
-
-levels(traj_data$group)
-# [1] "0"   "1"   "2"   "3"   "4"   "5"   "6"   "7"   "8"   "9"   "10"  "11"  "12"  "13"  "14" 
-# [16] "15"  "16"  "17"  "18"  "19"  "20"  "21"  "22"  "23"  "24"  "25"  "26"  "27"  "28"  "29" 
-# [31] "30"  "31"  "32"  "33"  "34"  "35"  "36"  "37"  "38"  "39"  "40"  "41"  "42"  "43"  "44" 
-# [46] "45"  "Ref"
-
-length(levels(traj_data$group)) #47
-
-x_labels <- c("0","","","","","","","","","","10",
-              "","","","","","","","","","20",
-              "","","","","","","","","","30",
-              "","","","","","","","","","40",
-              "","","","","","Ref")
-length(x_labels)
-# 47
-x_ticks <- c(1,0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,1)
-length(x_ticks)
-#47
-
-
-unique(traj_data$study) # Iluka-Eneabba                         Iluka-Eneabba\n(exclude 7-year rehab)
-
-unique(anno_data$study) # "Iluka-Eneabba"                         "Iluka-Eneabba\n(exclude 7-year rehab)"
-
-
-
-
-
-## median reference horizontal lines ...
-
-href_lines <- data.frame(
-  study  = rep( c("Iluka-Eneabba", "Iluka-Eneabba\n(exclude 7-year rehab)"), times = 2 ),
-  facet_x  = rep( c("Jaccard\nASV-level","Bray-Curtis\nASV-level"), each = 2),
-  similarity= NA
-)
-
-x <- traj_data
-
-for (i in 1:dim(href_lines)[1]) {
-  #i<-1
-  sel <- which(x$study == href_lines$study[i] & x$facet_x == href_lines$facet_x[i] & x$group == "Ref")
-  href_lines$similarity[i] <- median( x$similarity[sel] )
-}
-href_lines$facet_x <- factor(href_lines$facet_x,
-                             levels = c("Jaccard\nASV-level","Bray-Curtis\nASV-level"),
-                             ordered = TRUE)
-
-
-## fit logarithmic models for each data type (facet_x)
-
-
-
-## BOOTSTRAP MODELS ...
-
-pred_models_boot <- data.frame(study=NA, # one of: "Alcoa", "Iluka-Eneabba", "South32"
-                               facet_x=NA, # one of: c("Jaccard\nASV-level","Bray-Curtis\nASV-level", "Jaccard\nGenus-level","Bray-Curtis\nGenus-level")
-                               study_and_metric=NA, # combine the two values above
-                               group=NA,
-                               group_num=NA,
-                               similarity=NA,
-                               boot_no=NA,                 # EXTRA
-                               ref_median=NA,              # EXTRA
-                               pred_time_to_ref_median=NA, # EXTRA
-                               pred_type=NA)     # c("rectangular hyperbola", "logarithmic")
-pred_models_boot.temp <- pred_models_boot
-
-studies <- c("Iluka-Eneabba", "Iluka-Eneabba\n(exclude 7-year rehab)")
-metrics <- c("Jaccard\nASV-level","Bray-Curtis\nASV-level")
-pred_types <- c("rectangular hyperbola", "negative exponential", "logarithmic")
-k<-3
-
-## run logarithmic model only !!!
-
-x <- traj_data
-dim(x) # 864    9
-
-for (i in 1:length(studies)) {
-  #i<-1
-  this_study <- studies[i]
-  for (j in 1:length(metrics)) {
-    #j<-3
-    this_metric <- metrics[j]
-    
-    # prepare data for modelling
-    subsel <- which(x$facet_x == this_metric & x$study==this_study)
-    newdat <- x[subsel, c("similarity","group") ]
-    newdat$group_num <- as.numeric(as.character(newdat$group))
-    # remove 'Ref' similarities which have now been converted to NA
-    sel.na <- which(is.na(newdat$group_num))
-    
-    this_ref_median <- median(newdat$similarity[sel.na])
-    
-    newdat <- newdat[-sel.na, ]
-    
-    # prep output dataframe for prediction model to populate
-    sel.dup <- which(duplicated(newdat$group)==TRUE)
-    new_preds <- data.frame(matrix( nrow=dim(newdat[-sel.dup, ])[1], ncol = length(names(pred_models_boot.temp)) ))
-    names(new_preds) <- names(pred_models_boot.temp)
-    new_preds$group_num <- sort( newdat$group_num[-sel.dup] )
-    new_preds$study <- this_study
-    new_preds$facet_x <- this_metric
-    new_preds$study_and_metric <- paste0(new_preds$study,"__",new_preds$facet_x)
-    new_preds$group <- as.character(new_preds$group_num)
-    new_preds$ref_median <- this_ref_median
-    
-    #for (k in 1:length(pred_types)) {
-    
-    
-    this_pred_model_type <- pred_types[k]
-    
-    ## NOTE:
-    #  rectangular hyperbola ( fct = MM.2() from ‘drc' package; https://www.statforbiology.com/nonlinearregression/usefulequations#michaelis-menten_equation), and 
-    #  negative exponential ( fct = DRC.negExp() from 'aomisc' package; https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function)
-    #  models were trialled however these regularly failed to achieve model fits.
-    
-    
-    # NOW using "logarithmic" model only !!!!!
-    
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
-    
-    
-    for (b in 1:100) {
-      #b<-1
-      new_preds$boot_no <- b
-      set.seed(b + 1234)
-      sel.boot <- sample(x = c(1:dim(newdat)[1]), size = dim(newdat)[1], replace = TRUE)
-      
-      bootdat <- newdat[sel.boot, ]
-      
-      # exclude outlying data points from trajectory data-cloud ... 
-      # as outliers are likely to throw out model-fitting
-      bp <- boxplot(bootdat$similarity, print=FALSE)
-      sel.outlier <- which(bootdat$similarity %in% bp$out)
-      if (length(sel.outlier)>0) {
-        bootdat <- bootdat[-sel.outlier, ]
-      }
-      
-      #plot(bootdat$group_num, bootdat$similarity)
-      
-      model <- drm(similarity ~ group_num , fct = DRC.logCurve(), # DRC.negExp()
-                   data = bootdat)
-      
-      new_preds$similarity <- predict(model, new_preds )
-      new_preds$pred_type <- this_pred_model_type
-      
-      y <- data.frame(group_num=1:500, sim_pred=NA)
-      y$sim_pred <- predict(model, y )
-      y$reached_target <- y$sim_pred >= this_ref_median
-      #plot(y$group_num, y$sim_pred)
-      row.names(y)
-      
-      sel <- which(y$reached_target == TRUE)
-      
-      if (length(sel) > 0) {
-        years_to_ref <- min(sel)
-      } else {
-        years_to_ref <- NA
-      }
-      new_preds$pred_time_to_ref_median <- years_to_ref
-      
-      # add predictions from end of last year to 40 years ...
-      max_year <- max(new_preds$group_num)
-      year <- max_year + 1
-      while (year < 40) {
-        new_preds <- rbind(new_preds, new_preds[ dim(new_preds)[1], ])
-        year <- year + 1
-        new_preds$group_num[dim(new_preds)[1]] <- year
-        new_preds$group[dim(new_preds)[1]] <- as.character( new_preds$group_num[dim(new_preds)[1]] )
-        new_preds$similarity[dim(new_preds)[1]] <- y[ year, "sim_pred"]
-      }
-      
-      pred_models_boot <- rbind(pred_models_boot, new_preds)
-      
-    } # END bootstrap
-    
-    print(paste0("completed study: ",studies[i],"; metric: ",metrics[j],"; pred_type: ",pred_types[k]))  
-    #} # END pred_types
-  } # END metrics
-} # END studies
-
-
-# remove NA first row
-pred_models_boot <- pred_models_boot[-1, ]
-
-unique(pred_models_boot$facet_x)
-pred_models_boot$facet_x <- factor(pred_models_boot$facet_x,
-                                   levels = c("Jaccard\nASV-level", "Bray-Curtis\nASV-level"),
-                                   ordered = TRUE)
-
-unique(pred_models_boot$study)
-pred_models_boot$study <- factor(pred_models_boot$study,
-                                   levels = c("Iluka-Eneabba", "Iluka-Eneabba\n(exclude 7-year rehab)"),
-                                   ordered = TRUE)
-
-dim(pred_models_boot) # 3000    10
-
-
-# correct time prediction to ref; update NA to (>) 500 yrs
-sel <- which(is.na(pred_models_boot$pred_time_to_ref_median))
-pred_models_boot$pred_time_to_ref_median[sel] <- 500
-
-
-pred_models_boot$group <- factor(pred_models_boot$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
-str(pred_models_boot)
-
-
-str(traj_data)
-
-
-temp.traj_data <- traj_data
-temp.pred_models_boot <- pred_models_boot
-
-unique(traj_data$study) #  Iluka-Eneabba                         Iluka-Eneabba\n(exclude 7-year rehab)
-
-study_names <- c(
-  `Iluka-Eneabba`="Eneabba",
-  `Iluka-Eneabba\n(exclude 7-year rehab)`="Eneabba\n(exclude 7-year)"
-)
-
-
-
-p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
-  geom_line(data=pred_models_boot, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
-  geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
-  #geom_line(data= pred_models_alldata, aes(  x=group, y=similarity, group = 1), colour = "#e34a33" ) + # "red"
-  
-  geom_boxplot(outlier.shape = NA, width = 2) +
-  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
-  
-  theme_bw() +
-  geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
-  scale_x_discrete(drop=FALSE, expand = c(0.05,0.05),
-                   labels = x_labels) +
-  theme(axis.text.x  = element_text(angle=90,hjust=1, vjust=0.5), # 
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        #axis.ticks.x = element_line(linetype = 0)
-        axis.ticks.x = element_line(linetype = x_ticks),
-        strip.text.x = element_text(size = rel(1.1)),
-        strip.text.y = element_text(size = rel(1.1))
-  ) +
-  labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
-  facet_grid(rows = vars(study), cols = vars(facet_x), scales = "fixed", labeller = labeller(study = study_names) ) # study_labeller   as_labeller(study_names)
-
-p
-
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--IlukaEneabba--ASV-Jaccard-Bray-with-Preds-Exclude-7yr.tiff"), width = 11, height = 10, units = "cm", dpi = 600, compression = "lzw",type="cairo")
-
-
-
-str(traj_data)
-unique(traj_data$study) # Iluka-Eneabba                         Iluka-Eneabba\n(exclude 7-year rehab)
-unique(traj_data$group) # use "ref" only
-unique(traj_data$facet_x)
-#  Jaccard\nASV-level     Bray-Curtis\nASV-level
-
-
-## "Iluka-Eneabba"
-sel <- which(traj_data$study == "Iluka-Eneabba")
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "Jaccard\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 12.14   16.43   18.59   18.42   20.54   24.26 
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "Bray-Curtis\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 21.08   26.33   29.82   29.45   32.40   39.76 
-
-
-
-str(pred_models_boot)
-
-unique(pred_models_boot$study_and_metric)
-# [1] "Iluka-Eneabba__Jaccard\nASV-level"                             "Iluka-Eneabba__Bray-Curtis\nASV-level"                        
-# [3] "Iluka-Eneabba\n(exclude 7-year rehab)__Jaccard\nASV-level"     "Iluka-Eneabba\n(exclude 7-year rehab)__Bray-Curtis\nASV-level" 
-
-pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
-                                            levels = c(
-                                              "Iluka-Eneabba__Jaccard\nASV-level"                         ,    "Iluka-Eneabba__Bray-Curtis\nASV-level"                  ,      
-                                              "Iluka-Eneabba\n(exclude 7-year rehab)__Jaccard\nASV-level" ,    "Iluka-Eneabba\n(exclude 7-year rehab)__Bray-Curtis\nASV-level"
-                                            ))
-
-dim(pred_models_boot) # 3000    10
-
-dat.sum <- pred_models_boot
-head(dat.sum)
-# study            facet_x                  study_and_metric group group_num similarity boot_no ref_median pred_time_to_ref_median
-# 11 Iluka-Eneabba Jaccard\nASV-level Iluka-Eneabba__Jaccard\nASV-level     7         7   10.09930       1   18.59137                     115
-# 2  Iluka-Eneabba Jaccard\nASV-level Iluka-Eneabba__Jaccard\nASV-level    10        10   11.18426       1   18.59137                     115
-# 3  Iluka-Eneabba Jaccard\nASV-level Iluka-Eneabba__Jaccard\nASV-level    15        15   12.41765       1   18.59137                     115
-# 4  Iluka-Eneabba Jaccard\nASV-level Iluka-Eneabba__Jaccard\nASV-level    19        19   13.13672       1   18.59137                     115
-# 5  Iluka-Eneabba Jaccard\nASV-level Iluka-Eneabba__Jaccard\nASV-level    24        24   13.84735       1   18.59137                     115
-# 6  Iluka-Eneabba Jaccard\nASV-level Iluka-Eneabba__Jaccard\nASV-level    30        30   14.52613       1   18.59137                     115
-# pred_type
-# 11 logarithmic
-# 2  logarithmic
-# 3  logarithmic
-# 4  logarithmic
-# 5  logarithmic
-# 6  logarithmic
-
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
-  #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"],")"))
-}
-# [1] "Iluka-Eneabba__Jaccard\nASV-level: 97 (73.9, 133.45)"
-# [1] "Iluka-Eneabba__Bray-Curtis\nASV-level: 93.5 (69, 131.35)"
-# [1] "Iluka-Eneabba\n(exclude 7-year rehab)__Jaccard\nASV-level: 61 (54, 71.05)"
-# [1] "Iluka-Eneabba\n(exclude 7-year rehab)__Bray-Curtis\nASV-level: 60 (52.95, 71.05)"
-
-
-levels( pred_models_boot$facet_x )
-# "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"        "Unweighted UniFrac\nASV-level" "Weighted UniFrac\nASV-level"  
-
-
-
-
-## plot time to target
-
-names(pred_models_boot)
-# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"
-
-
-
-df <- pred_models_boot
-unique(df$study) #  Iluka-Eneabba                         Iluka-Eneabba\n(exclude 7-year rehab)
-df$study <- factor(df$study,
-                   levels = c("Iluka-Eneabba", "Iluka-Eneabba\n(exclude 7-year rehab)"),
-                   labels = c("Eneabba", "Eneabba (exclude 7-year)"), ordered = TRUE)
-df$facet_x
-# Levels: Jaccard\nASV-level < Bray-Curtis\nASV-level < Unweighted UniFrac\nASV-level < Weighted UniFrac\nASV-level
-df$facet_x <- factor(df$facet_x, 
-                     levels = c("Jaccard\nASV-level",
-                                "Bray-Curtis\nASV-level"),
-                     labels = c("Jaccard",
-                                "Bray-Curtis"), ordered = TRUE)
-
-p <- ggplot(data=df, aes(x=facet_x, y=pred_time_to_ref_median)) +  # , color = facet_x
-  geom_boxplot() +
-  theme_bw() +
-  facet_wrap(vars(study) , nrow=1) +
-  theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.text.x = element_text(size = rel(1.1))
-  ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)")
-p
-
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Iluka-Eneabba--ASV-Jaccard-Bray-exclude7yr.tiff"), width = 10, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
-
-
-#-------------------------
-
-
-#### facet_grid trajectory plots + predict time to reach ref:
-##   ASV -- Jaccard + Bray-Curtis -- South32 only - with & without youngest rehab_age group & associated southernmost Ref
-#-------------------------
-
-names(df_results)
-
-
-names(df_results[[1]])
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"    
-# [7] "group"          "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"  
-
-
-keep_results <- c("South32-Jaccard-ASV-withTree" ,           "South32-Bray-ASV-withTree" ,
-                  "South32-Jaccard-ASV-withTree-exclude2yr", "South32-Bray-ASV-withTree-exclude2yr"
-)
-
-
-keep_cols <- c("samp","compare_with","similarity","group","dist_measure","tax_level","study","corrected","facet_x")
-traj_data <- df_results[[ keep_results[1] ]][ ,keep_cols]
-for (i in 2:length(keep_results)) {
-  traj_data <- rbind(traj_data,df_results[[ keep_results[i] ]][ ,keep_cols])
-  print(paste0("completed ",i))
-}
-dim(traj_data) # 530    9
-unique(traj_data$facet_x) # "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"
-
-keep_cols_anno <- c("group","sig_letter","similarity","dist_measure","tax_level","study","corrected","facet_x")
-anno_data <- df_anno[[ keep_results[1] ]][ ,keep_cols_anno]
-for (i in 2:length(keep_results)) {
-  anno_data <- rbind(anno_data,df_anno[[ keep_results[i] ]][ ,keep_cols_anno])
-  print(paste0("completed ",i))
-}
-dim(anno_data) # 34  8
-class(anno_data$facet_x) # "character"
-unique(anno_data$facet_x) # "character"
-# [1] "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"
-anno_data$facet_x <- factor(anno_data$facet_x,
-                            levels = c("Jaccard\nASV-level","Bray-Curtis\nASV-level"),
-                            ordered = TRUE)
-
-unique(traj_data$facet_x)
-# [1] "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"
-class(traj_data$facet_x) # "character"
-traj_data$facet_x <- factor(traj_data$facet_x,
-                            levels = c("Jaccard\nASV-level","Bray-Curtis\nASV-level"),
-                            ordered = TRUE)
-
-unique(traj_data$study)
-# [1] "South32"                         "South32\n(exclude 2-year rehab)"
-class(traj_data$study) # "character"
-traj_data$study <- factor(traj_data$study,
-                          levels = c("South32", "South32\n(exclude 2-year rehab)"),
-                          ordered = TRUE)
-
-unique(anno_data$study)
-# [1] "South32"                         "South32\n(exclude 2-year rehab)"
-class(anno_data$study) # "character"
-anno_data$study <- factor(anno_data$study,
-                          levels = c("South32"  ,  "South32\n(exclude 2-year rehab)"),
-                          ordered = TRUE)
-
-class(traj_data$group)
-# "ordered" "factor" 
-
-traj_data$group <- factor(traj_data$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
-
-levels(traj_data$group)
-# [1] "0"   "1"   "2"   "3"   "4"   "5"   "6"   "7"   "8"   "9"   "10"  "11"  "12"  "13"  "14" 
-# [16] "15"  "16"  "17"  "18"  "19"  "20"  "21"  "22"  "23"  "24"  "25"  "26"  "27"  "28"  "29" 
-# [31] "30"  "31"  "32"  "33"  "34"  "35"  "36"  "37"  "38"  "39"  "40"  "41"  "42"  "43"  "44" 
-# [46] "45"  "Ref"
-
-length(levels(traj_data$group)) #47
-
-x_labels <- c("0","","","","","","","","","","10",
-              "","","","","","","","","","20",
-              "","","","","","","","","","30",
-              "","","","","","","","","","40",
-              "","","","","","Ref")
-length(x_labels)
-# 47
-x_ticks <- c(1,0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,0,0,0,0,1,
-             0,0,0,0,0,1)
-length(x_ticks)
-#47
-
-
-unique(traj_data$study) # South32                         South32\n(exclude 2-year rehab)
-
-unique(anno_data$study) # South32                         South32\n(exclude 2-year rehab)
-
- 
-
-
-
-## median reference horizontal lines ...
-
-href_lines <- data.frame(
-  study  = rep( c("South32" ,  "South32\n(exclude 2-year rehab)"), times = 2 ),
-  facet_x  = rep( c("Jaccard\nASV-level","Bray-Curtis\nASV-level"), each = 2),
-  similarity= NA
-)
-
-x <- traj_data
-
-for (i in 1:dim(href_lines)[1]) {
-  #i<-1
-  sel <- which(x$study == href_lines$study[i] & x$facet_x == href_lines$facet_x[i] & x$group == "Ref")
-  href_lines$similarity[i] <- median( x$similarity[sel] )
-}
-href_lines$facet_x <- factor(href_lines$facet_x,
-                             levels = c("Jaccard\nASV-level","Bray-Curtis\nASV-level"),
-                             ordered = TRUE)
-
-
-## fit logarithmic models for each data type (facet_x)
-
-
-
-## BOOTSTRAP MODELS ...
-
-pred_models_boot <- data.frame(study=NA, # one of: "Alcoa", "Iluka-Eneabba", "South32"
-                               facet_x=NA, # one of: c("Jaccard\nASV-level","Bray-Curtis\nASV-level", "Jaccard\nGenus-level","Bray-Curtis\nGenus-level")
-                               study_and_metric=NA, # combine the two values above
-                               group=NA,
-                               group_num=NA,
-                               similarity=NA,
-                               boot_no=NA,                 # EXTRA
-                               ref_median=NA,              # EXTRA
-                               pred_time_to_ref_median=NA, # EXTRA
-                               pred_type=NA)     # c("rectangular hyperbola", "logarithmic")
-pred_models_boot.temp <- pred_models_boot
-
-studies <- c("South32" ,  "South32\n(exclude 2-year rehab)")
-metrics <- c("Jaccard\nASV-level","Bray-Curtis\nASV-level")
-pred_types <- c("rectangular hyperbola", "negative exponential", "logarithmic")
-k<-3
-
-## run logarithmic model only !!!
-
-x <- traj_data
-dim(x) # 530   9
-
-for (i in 1:length(studies)) {
-  #i<-1
-  this_study <- studies[i]
-  for (j in 1:length(metrics)) {
-    #j<-3
-    this_metric <- metrics[j]
-    
-    # prepare data for modelling
-    subsel <- which(x$facet_x == this_metric & x$study==this_study)
-    newdat <- x[subsel, c("similarity","group") ]
-    newdat$group_num <- as.numeric(as.character(newdat$group))
-    # remove 'Ref' similarities which have now been converted to NA
-    sel.na <- which(is.na(newdat$group_num))
-    
-    this_ref_median <- median(newdat$similarity[sel.na])
-    
-    newdat <- newdat[-sel.na, ]
-    
-    # prep output dataframe for prediction model to populate
-    sel.dup <- which(duplicated(newdat$group)==TRUE)
-    new_preds <- data.frame(matrix( nrow=dim(newdat[-sel.dup, ])[1], ncol = length(names(pred_models_boot.temp)) ))
-    names(new_preds) <- names(pred_models_boot.temp)
-    new_preds$group_num <- sort( newdat$group_num[-sel.dup] )
-    new_preds$study <- this_study
-    new_preds$facet_x <- this_metric
-    new_preds$study_and_metric <- paste0(new_preds$study,"__",new_preds$facet_x)
-    new_preds$group <- as.character(new_preds$group_num)
-    new_preds$ref_median <- this_ref_median
-    
-    #for (k in 1:length(pred_types)) {
-    
-    this_pred_model_type <- pred_types[k]
-    
-    ## NOTE:
-    #  rectangular hyperbola ( fct = MM.2() from ‘drc' package; https://www.statforbiology.com/nonlinearregression/usefulequations#michaelis-menten_equation), and 
-    #  negative exponential ( fct = DRC.negExp() from 'aomisc' package; https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function)
-    #  models were trialled however these regularly failed to achieve model fits.
-    
-    
-    # NOW using "logarithmic" model only !!!!!
-    
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
-    
-    
-    for (b in 1:100) {
-      #b<-1
-      new_preds$boot_no <- b
-      set.seed(b + 1234)
-      sel.boot <- sample(x = c(1:dim(newdat)[1]), size = dim(newdat)[1], replace = TRUE)
-      
-      bootdat <- newdat[sel.boot, ]
-      
-      # exclude outlying data points from trajectory data-cloud ... 
-      # as outliers are likely to throw out model-fitting
-      bp <- boxplot(bootdat$similarity, print=FALSE)
-      sel.outlier <- which(bootdat$similarity %in% bp$out)
-      if (length(sel.outlier)>0) {
-        bootdat <- bootdat[-sel.outlier, ]
-      }
-      
-      #plot(bootdat$group_num, bootdat$similarity)
-      
-      model <- drm(similarity ~ group_num , fct = DRC.logCurve(), # DRC.negExp()
-                   data = bootdat)
-      
-      new_preds$similarity <- predict(model, new_preds )
-      new_preds$pred_type <- this_pred_model_type
-      
-      y <- data.frame(group_num=1:500, sim_pred=NA)
-      y$sim_pred <- predict(model, y )
-      y$reached_target <- y$sim_pred >= this_ref_median
-      #plot(y$group_num, y$sim_pred)
-      row.names(y)
-      
-      sel <- which(y$reached_target == TRUE)
-      
-      if (length(sel) > 0) {
-        years_to_ref <- min(sel)
-      } else {
-        years_to_ref <- NA
-      }
-      new_preds$pred_time_to_ref_median <- years_to_ref
-      
-      # add predictions from end of last year to 40 years ...
-      max_year <- max(new_preds$group_num)
-      year <- max_year + 1
-      while (year < 40) {
-        new_preds <- rbind(new_preds, new_preds[ dim(new_preds)[1], ])
-        year <- year + 1
-        new_preds$group_num[dim(new_preds)[1]] <- year
-        new_preds$group[dim(new_preds)[1]] <- as.character( new_preds$group_num[dim(new_preds)[1]] )
-        new_preds$similarity[dim(new_preds)[1]] <- y[ year, "sim_pred"]
-      }
-      
-      pred_models_boot <- rbind(pred_models_boot, new_preds)
-      
-    } # END bootstrap
-    
-    print(paste0("completed study: ",studies[i],"; metric: ",metrics[j],"; pred_type: ",pred_types[k]))  
-    #} # END pred_types
-  } # END metrics
-} # END studies
-
-
-# remove NA first row
-pred_models_boot <- pred_models_boot[-1, ]
-
-unique(pred_models_boot$facet_x)
-pred_models_boot$facet_x <- factor(pred_models_boot$facet_x,
-                                   levels = c("Jaccard\nASV-level", "Bray-Curtis\nASV-level"),
-                                   ordered = TRUE)
-
-unique(pred_models_boot$study)
-pred_models_boot$study <- factor(pred_models_boot$study,
-                                 levels = c("South32" ,  "South32\n(exclude 2-year rehab)"),
-                                 ordered = TRUE)
-
-dim(pred_models_boot) # 7400    10
-
-
-# correct time prediction to ref; update NA to (>) 500 yrs
-sel <- which(is.na(pred_models_boot$pred_time_to_ref_median))
-pred_models_boot$pred_time_to_ref_median[sel] <- 500
-
-
-pred_models_boot$group <- factor(pred_models_boot$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
-str(pred_models_boot)
-
-
-str(traj_data)
-
-
-temp.traj_data <- traj_data
-temp.pred_models_boot <- pred_models_boot
-
-unique(traj_data$study) #  South32                         South32\n(exclude 2-year rehab)
-
-study_names <- c(
-  South32="Worsley",
-  `South32\n(exclude 2-year rehab)`="Worsley\n(exclude 2-year)"
-)
-
-
-
-p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
-  geom_line(data=pred_models_boot, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
-  geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
-  #geom_line(data= pred_models_alldata, aes(  x=group, y=similarity, group = 1), colour = "#e34a33" ) + # "red"
-  
-  geom_boxplot(outlier.shape = NA, width = 2) +
-  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
-  
-  theme_bw() +
-  geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
-  scale_x_discrete(drop=FALSE, expand = c(0.05,0.05),
-                   labels = x_labels) +
-  theme(axis.text.x  = element_text(angle=90,hjust=1, vjust=0.5), # 
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        #axis.ticks.x = element_line(linetype = 0)
-        axis.ticks.x = element_line(linetype = x_ticks),
-        strip.text.x = element_text(size = rel(1.1)),
-        strip.text.y = element_text(size = rel(1.1))
-  ) +
-  labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
-  facet_grid(rows = vars(study), cols = vars(facet_x), scales = "fixed", labeller = labeller(study = study_names) ) # study_labeller   as_labeller(study_names)
-
-p
-
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--Worsley--ASV-Jaccard-Bray-with-Preds-Exclude-2yr.tiff"), width = 11, height = 10, units = "cm", dpi = 600, compression = "lzw",type="cairo")
-
-
-
-str(traj_data)
-unique(traj_data$study) # South32                         South32\n(exclude 2-year rehab)
-unique(traj_data$group) # use "ref" only
-unique(traj_data$facet_x)
-#  Jaccard\nASV-level     Bray-Curtis\nASV-level
-
-
-## "South32"
-sel <- which(traj_data$study == "South32")
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "Jaccard\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 17.25   20.16   25.72   24.56   28.41   31.25 
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$facet_x[sel] == "Bray-Curtis\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 21.39   26.45   36.02   34.32   39.96   46.11 
-
-
-
-str(pred_models_boot)
-
-unique(pred_models_boot$study_and_metric)
-# [1] "South32__Jaccard\nASV-level"                             "South32__Bray-Curtis\nASV-level"                        
-# [3] "South32\n(exclude 2-year rehab)__Jaccard\nASV-level"     "South32\n(exclude 2-year rehab)__Bray-Curtis\nASV-level"
-
-pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
-                                            levels = c(
-                                              "South32__Jaccard\nASV-level"                          ,   "South32__Bray-Curtis\nASV-level"         ,               
-                                              "South32\n(exclude 2-year rehab)__Jaccard\nASV-level"   ,  "South32\n(exclude 2-year rehab)__Bray-Curtis\nASV-level"
-                                            ))
-
-dim(pred_models_boot) # 7400    10
-
-dat.sum <- pred_models_boot
-head(dat.sum)
-# study            facet_x            study_and_metric group group_num similarity boot_no ref_median pred_time_to_ref_median   pred_type
-# 11 South32 Jaccard\nASV-level South32__Jaccard\nASV-level     2         2   15.03478       1    25.7234                     192 logarithmic
-# 2  South32 Jaccard\nASV-level South32__Jaccard\nASV-level     8         8   18.28406       1    25.7234                     192 logarithmic
-# 3  South32 Jaccard\nASV-level South32__Jaccard\nASV-level    12        12   19.23441       1    25.7234                     192 logarithmic
-# 4  South32 Jaccard\nASV-level South32__Jaccard\nASV-level    14        14   19.59572       1    25.7234                     192 logarithmic
-# 5  South32 Jaccard\nASV-level South32__Jaccard\nASV-level    17        17   20.05079       1    25.7234                     192 logarithmic
-# 6  South32 Jaccard\nASV-level South32__Jaccard\nASV-level    20        20   20.43171       1    25.7234                     192 logarithmic
-
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
-  #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"],")"))
-}
-# [1] "South32__Jaccard\nASV-level: 131.5 (68.8, 313.25)"
-# [1] "South32__Bray-Curtis\nASV-level: 103.5 (68.9, 173.549999999999)"
-# [1] "South32\n(exclude 2-year rehab)__Jaccard\nASV-level: 36 (32, 42)"
-# [1] "South32\n(exclude 2-year rehab)__Bray-Curtis\nASV-level: 40.5 (36, 47)"
-
-
-levels( pred_models_boot$facet_x )
-# "Jaccard\nASV-level"            "Bray-Curtis\nASV-level"        "Unweighted UniFrac\nASV-level" "Weighted UniFrac\nASV-level"  
-
-
-
-
-## plot time to target
-
-names(pred_models_boot)
-# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"
-
-
-
-df <- pred_models_boot
-unique(df$study) #  South32                         South32\n(exclude 2-year rehab)
-df$study <- factor(df$study,
-                   levels = c("South32", "South32\n(exclude 2-year rehab)"),
-                   labels = c("Worsley", "Worsley (exclude 2-year)"), ordered = TRUE)
-df$facet_x
-# Levels: Jaccard\nASV-level < Bray-Curtis\nASV-level < Unweighted UniFrac\nASV-level < Weighted UniFrac\nASV-level
-df$facet_x <- factor(df$facet_x, 
-                     levels = c("Jaccard\nASV-level",
-                                "Bray-Curtis\nASV-level"),
-                     labels = c("Jaccard",
-                                "Bray-Curtis"), ordered = TRUE)
-
-p <- ggplot(data=df, aes(x=facet_x, y=pred_time_to_ref_median)) +  # , color = facet_x
-  geom_boxplot() +
-  theme_bw() +
-  facet_wrap(vars(study) , nrow=1) +
-  theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.text.x = element_text(size = rel(1.1))
-  ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)")
-p
-
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Worsley--ASV-Jaccard-Bray-exclude2yr.tiff"), width = 10, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
-
-
-#-------------------------
-
-
 
 
 #### facet_grid trajectory plots + predict time to reach ref:
@@ -21640,6 +23059,28 @@ for (i in 1:length(studies)) {
     
     newdat <- newdat[-sel.na, ]
     
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
+    
+    
     # prep output dataframe for prediction model to populate
     sel.dup <- which(duplicated(newdat$group)==TRUE)
     new_preds <- data.frame(matrix( nrow=dim(newdat[-sel.dup, ])[1], ncol = length(names(pred_models_boot.temp)) ))
@@ -21664,8 +23105,6 @@ for (i in 1:length(studies)) {
     
     # NOW using "logarithmic" model only !!!!!
     
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
     
     
     for (b in 1:100) {
@@ -21787,8 +23226,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
   geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
   #geom_line(data= pred_models_alldata, aes(  x=group, y=similarity, group = 1), colour = "#e34a33" ) + # "red"
   
-  geom_boxplot(outlier.shape = NA, width = 2) +
-  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
   
   theme_bw() +
   geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
@@ -21798,7 +23237,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         #axis.ticks.x = element_line(linetype = 0)
-        axis.ticks.x = element_line(linetype = x_ticks)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.background = element_blank()
   ) +
   labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
   facet_grid(rows = vars(dist_measure), cols = vars(NEW_newfacet_x), scales = "fixed")
@@ -21891,91 +23331,191 @@ pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
 
 dim(pred_models_boot) # 16000    12
 
-dat.sum <- pred_models_boot
-head(dat.sum)
-# study                facet_x              study_and_metric group group_num similarity boot_no ref_median
-# 11 Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     2         2   9.389107       1   35.55047
-# 2  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     8         8  21.149581       1   35.55047
-# 3  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    14        14  25.897020       1   35.55047
-# 4  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    17        17  27.544121       1   35.55047
-# 5  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    25        25  30.815846       1   35.55047
-# 6  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    29        29  32.074951       1   35.55047
-# pred_time_to_ref_median   pred_type NEW_newfacet_x dist_measure
-# 11                      44 logarithmic      ASV-level  Bray-Curtis
-# 2                       44 logarithmic      ASV-level  Bray-Curtis
-# 3                       44 logarithmic      ASV-level  Bray-Curtis
-# 4                       44 logarithmic      ASV-level  Bray-Curtis
-# 5                       44 logarithmic      ASV-level  Bray-Curtis
-# 6                       44 logarithmic      ASV-level  Bray-Curtis
 
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
+unique( pred_models_boot$study_and_metric)
+#  [1] Alcoa__Bray-Curtis\nASV-level Alcoa__Bray-Curtis\n99% OTUs  Alcoa__Bray-Curtis\n97% OTUs  Alcoa__Bray-Curtis\n95% OTUs 
+# [5] Alcoa__Bray-Curtis\n90% OTUs  Alcoa__Jaccard\nASV-level     Alcoa__Jaccard\n99% OTUs      Alcoa__Jaccard\n97% OTUs     
+# [9] Alcoa__Jaccard\n95% OTUs      Alcoa__Jaccard\n90% OTUs 
+
+
+df <- data.frame(study_and_metric = rep(c(
+  "Alcoa__Bray-Curtis\nASV-level",
+  "Alcoa__Bray-Curtis\n99% OTUs",
+  "Alcoa__Bray-Curtis\n97% OTUs",
+  "Alcoa__Bray-Curtis\n95% OTUs",
+  "Alcoa__Bray-Curtis\n90% OTUs",
+  
+  "Alcoa__Jaccard\nASV-level",
+  "Alcoa__Jaccard\n99% OTUs",
+  "Alcoa__Jaccard\n97% OTUs",
+  "Alcoa__Jaccard\n95% OTUs",
+  "Alcoa__Jaccard\n90% OTUs"
+  ),each=100),
+  boot_no = rep(1:100, times=10),
+  pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
   #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"],") yr."))
+  this_study_and_metric <- df$study_and_metric[i]
+  #this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study_and_metric == this_study_and_metric & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study and metric: ", this_study_and_metric," ; boot_no: ",this_boot," ; i = ",i))
 }
-# [1] "Alcoa__Bray-Curtis\nASV-level: 43 (39, 49) yr."
-# [1] "Alcoa__Bray-Curtis\n99% OTUs: 40 (37, 45) yr."
-# [1] "Alcoa__Bray-Curtis\n97% OTUs: 37 (35, 42) yr."
-# [1] "Alcoa__Bray-Curtis\n95% OTUs: 37 (34, 42) yr."
-# [1] "Alcoa__Bray-Curtis\n90% OTUs: 37 (33, 42) yr."
-# [1] "Alcoa__Jaccard\nASV-level: 60.5 (51, 79) yr."
-# [1] "Alcoa__Jaccard\n99% OTUs: 63.5 (53, 85) yr."
-# [1] "Alcoa__Jaccard\n97% OTUs: 81 (63.95, 117.35) yr."
-# [1] "Alcoa__Jaccard\n95% OTUs: 93.5 (68.95, 156.25) yr."
-# [1] "Alcoa__Jaccard\n90% OTUs: 133.5 (77.8, 441.749999999999) yr."
 
+
+df.temp <- df
 
 ## plot time to target
 
 names(pred_models_boot)
 # [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"              
-# [11] "NEW_newfacet_x"          "dist_measure" 
+# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"
 
 
-p <- ggplot(data=pred_models_boot, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, color = dist_measure
+df$NEW_newfacet_x <- NA
+df$dist_measure <- NA
+
+sel <- grep(pattern = "Jaccard", x = df$study_and_metric)
+df$dist_measure[sel] <- "Jaccard"
+sel <- grep(pattern = "Bray-Curtis", x = df$study_and_metric)
+df$dist_measure[sel] <- "Bray-Curtis"
+
+sel <- grep(pattern = "ASV-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "ASV-level"
+sel <- grep(pattern = "99% OTUs", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "99% OTUs"
+sel <- grep(pattern = "97% OTUs", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "97% OTUs"
+sel <- grep(pattern = "95% OTUs", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "95% OTUs"
+sel <- grep(pattern = "90% OTUs", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "90% OTUs"
+
+
+df$dist_measure <- factor(df$dist_measure, levels = c("Jaccard","Bray-Curtis"), ordered = TRUE)
+df$NEW_newfacet_x <- factor(df$NEW_newfacet_x, levels = c("ASV-level","99% OTUs","97% OTUs","95% OTUs","90% OTUs"), ordered = TRUE)
+
+
+
+p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, color = dist_measure
   geom_boxplot() +
   #scale_color_manual(values = c("Bray-Curtis" = "#d73027", "Jaccard" = "#4575b4"), name = "Distance\nmeasure") +
   theme_bw() +
   theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
         panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()#,
+        panel.grid.minor = element_blank(),
         #strip.background = element_blank(),
         #strip.text.x = element_blank()
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.background = element_blank()
   ) +
   facet_wrap(facets = vars(dist_measure), scales = "free_y" ) +
   labs(x = NULL, y = "Predicted time to reach target (yr)")
 p
 
-
-df <- pred_models_boot
-df$dist_measure <- factor(df$dist_measure, levels = c("Jaccard","Bray-Curtis"),ordered = TRUE)
-
-p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, color = dist_measure
-  geom_boxplot() +
-  theme_bw() +
-  theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()#,
-    ) +
-  facet_wrap(facets = vars(dist_measure), scales = "free_y" ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)")
-p
-
-
-
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-time-to-target--A--Alcoa--Bray-Jaccard-ASV-99-97-95-90-OTUs.tiff"), width = 12, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
+
+
+
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study_and_metric) 
+#  [1] "Alcoa__Bray-Curtis\nASV-level" "Alcoa__Bray-Curtis\n99% OTUs"  "Alcoa__Bray-Curtis\n97% OTUs"  "Alcoa__Bray-Curtis\n95% OTUs" 
+# [5] "Alcoa__Bray-Curtis\n90% OTUs"  "Alcoa__Jaccard\nASV-level"     "Alcoa__Jaccard\n99% OTUs"      "Alcoa__Jaccard\n97% OTUs"     
+# [9] "Alcoa__Jaccard\n95% OTUs"      "Alcoa__Jaccard\n90% OTUs" 
+
+## "Alcoa__Bray-Curtis\nASV-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 43 (39, 50), n = 100"
+
+
+## "Alcoa__Bray-Curtis\n99% OTUs"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\n99% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\n99% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 40 (37, 46), n = 100"
+
+## "Alcoa__Bray-Curtis\n97% OTUs"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\n97% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\n97% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 37 (34, 42.525), n = 100"
+
+## "Alcoa__Bray-Curtis\n95% OTUs" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\n95% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\n95% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 37 (34, 42), n = 100"
+
+## "Alcoa__Bray-Curtis\n90% OTUs" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\n90% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\n90% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 37 (32.475, 43), n = 100"
+
+
+
+
+
+
+## "Alcoa__Jaccard\nASV-level"  
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 60.5 (51, 81.05), n = 100"
+
+## "Alcoa__Jaccard\n99% OTUs"   
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\n99% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\n99% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 63.5 (52.475, 88.575), n = 100"
+
+## "Alcoa__Jaccard\n97% OTUs"     
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\n97% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\n97% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 81 (61, 130.25), n = 100"
+
+## "Alcoa__Jaccard\n95% OTUs"  
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\n95% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\n95% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 93.5 (65.95, 176.525), n = 100"
+
+## "Alcoa__Jaccard\n90% OTUs" 
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\n90% OTUs") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\n90% OTUs - Recovery time: median (2.5th, 97.5th percentile)] : 133.5 (71.475, 483.375), n = 100"
 
 
 #-------------------------
@@ -22267,6 +23807,26 @@ for (i in 1:length(studies)) {
     
     newdat <- newdat[-sel.na, ]
     
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
 
     # prep output dataframe for prediction model to populate
     sel.dup <- which(duplicated(newdat$group)==TRUE)
@@ -22291,9 +23851,6 @@ for (i in 1:length(studies)) {
     
     
     # NOW using "logarithmic" model only !!!!!
-    
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
     
     
     for (b in 1:100) {
@@ -22417,8 +23974,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
   geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
   #geom_line(data= pred_models_alldata, aes(  x=group, y=similarity, group = 1), colour = "#e34a33" ) + # "red"
   
-  geom_boxplot(outlier.shape = NA, width = 2) +
-  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
   
   theme_bw() +
   geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
@@ -22428,7 +23985,10 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         #axis.ticks.x = element_line(linetype = 0)
-        axis.ticks.x = element_line(linetype = x_ticks)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
   ) +
   labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
   facet_grid(rows = vars(dist_measure), cols = vars(NEW_newfacet_x), scales = "fixed")
@@ -22436,8 +23996,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
 p
 
 
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Restoration-trajectories--Alcoa--Bray-Jaccard-ASV-Genus-Family-Order-Class-Phylum-PRUNED-with-Preds--A.tiff"), width = 18, height = 10, units = "cm", res = 600, compression = "lzw",type="cairo")
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Restoration-trajectories--Alcoa--Bray-Jaccard-ASV-Genus-Family-Order-Class-Phylum-PRUNED-with-Preds--a.tiff"), width = 18, height = 10, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
 
@@ -22532,78 +24092,73 @@ pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
 
 dim(pred_models_boot) # 19200    12
 
-dat.sum <- pred_models_boot
-head(dat.sum)
-# study                facet_x              study_and_metric group group_num similarity boot_no ref_median
-# 11 Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     2         2   9.389107       1   35.55047
-# 2  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     8         8  21.149581       1   35.55047
-# 3  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    14        14  25.897020       1   35.55047
-# 4  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    17        17  27.544121       1   35.55047
-# 5  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    25        25  30.815846       1   35.55047
-# 6  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    29        29  32.074951       1   35.55047
-# pred_time_to_ref_median   pred_type NEW_newfacet_x dist_measure
-# 11                      44 logarithmic      ASV-level  Bray-Curtis
-# 2                       44 logarithmic      ASV-level  Bray-Curtis
-# 3                       44 logarithmic      ASV-level  Bray-Curtis
-# 4                       44 logarithmic      ASV-level  Bray-Curtis
-# 5                       44 logarithmic      ASV-level  Bray-Curtis
-# 6                       44 logarithmic      ASV-level  Bray-Curtis
 
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
+df <- data.frame(study_and_metric = rep(c(
+  "Alcoa__Bray-Curtis\nASV-level",
+  "Alcoa__Bray-Curtis\nGenus-level",
+  "Alcoa__Bray-Curtis\nFamily-level",
+  "Alcoa__Bray-Curtis\nOrder-level" ,
+  "Alcoa__Bray-Curtis\nClass-level" ,
+  "Alcoa__Bray-Curtis\nPhylum-level",
+  
+  "Alcoa__Jaccard\nASV-level"  ,
+  "Alcoa__Jaccard\nGenus-level" ,
+  "Alcoa__Jaccard\nFamily-level" ,
+  "Alcoa__Jaccard\nOrder-level" ,
+  "Alcoa__Jaccard\nClass-level" ,
+  "Alcoa__Jaccard\nPhylum-level"
+),each=100),
+boot_no = rep(1:100, times=12),
+pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
   #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"],") yr."))
+  this_study_and_metric <- df$study_and_metric[i]
+  #this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study_and_metric == this_study_and_metric & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study and metric: ", this_study_and_metric," ; boot_no: ",this_boot," ; i = ",i))
 }
-# [1] "Alcoa__Bray-Curtis\nASV-level: 43 (39, 49) yr."
-# [1] "Alcoa__Bray-Curtis\nGenus-level: 34 (31, 37) yr."
-# [1] "Alcoa__Bray-Curtis\nFamily-level: 33 (31, 38.05) yr."
-# [1] "Alcoa__Bray-Curtis\nOrder-level: 35 (32, 40) yr."
-# [1] "Alcoa__Bray-Curtis\nClass-level: 50 (44.95, 61.05) yr."
-# [1] "Alcoa__Bray-Curtis\nPhylum-level: 51 (44.95, 65) yr."
-# [1] "Alcoa__Jaccard\nASV-level: 60.5 (51, 79) yr."
-# [1] "Alcoa__Jaccard\nGenus-level: 487.5 (234.35, 500) yr."
-# [1] "Alcoa__Jaccard\nFamily-level: 198 (139.25, 353.099999999998) yr."
-# [1] "Alcoa__Jaccard\nOrder-level: 258 (155.85, 500) yr."
-# [1] "Alcoa__Jaccard\nClass-level: 500 (500, 500) yr."
-# [1] "Alcoa__Jaccard\nPhylum-level: 500 (95.8500000000001, 500) yr."
 
+
+df.temp <- df
 
 ## plot time to target
 
-names(pred_models_boot)
-# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"              
-# [11] "NEW_newfacet_x"          "dist_measure" 
 
-p <- ggplot(data=pred_models_boot, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median, color = dist_measure)) +
-  geom_boxplot() +
-  scale_color_manual(values = c("Bray-Curtis" = "#d73027", "Jaccard" = "#4575b4"), name = "Distance\nmeasure") +
-  theme_bw() +
-  theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        
-        strip.background = element_blank(),
-        strip.text.x = element_blank()
-  ) +
-  facet_wrap(facets = vars(dist_measure), scales = "free_y" ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)")
-p
+df$NEW_newfacet_x <- NA
+df$dist_measure <- NA
 
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa--Bray-Jaccard-ASV-Genus-Family-Order-Class-Phylum-PRUNED.tiff"), width = 14, height = 10, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+sel <- grep(pattern = "Jaccard", x = df$study_and_metric)
+df$dist_measure[sel] <- "Jaccard"
+sel <- grep(pattern = "Bray-Curtis", x = df$study_and_metric)
+df$dist_measure[sel] <- "Bray-Curtis"
+
+sel <- grep(pattern = "ASV-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "ASV-level"
+sel <- grep(pattern = "Genus-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Genus-level"
+sel <- grep(pattern = "Family-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Family-level"
+sel <- grep(pattern = "Order-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Order-level"
+sel <- grep(pattern = "Class-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Class-level"
+sel <- grep(pattern = "Phylum-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Phylum-level"
 
 
-df <- pred_models_boot
-df$dist_measure <- factor(df$dist_measure, levels=c("Jaccard","Bray-Curtis"), ordered = TRUE)
+df$dist_measure <- factor(df$dist_measure, levels = c("Jaccard","Bray-Curtis"), ordered = TRUE)
+df$NEW_newfacet_x <- factor(df$NEW_newfacet_x, levels = c("ASV-level",
+                                                          "Genus-level",
+                                                          "Family-level",
+                                                          "Order-level" ,
+                                                          "Class-level" ,
+                                                          "Phylum-level"), ordered = TRUE)
+
+
 measures.new <- c(`Bray-Curtis`="Bray-Curtis\nPruned", Jaccard="Jaccard\nPruned" )
 
 
@@ -22612,17 +24167,129 @@ p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) +
   theme_bw() +
   theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
         panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()#,
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.background = element_blank()
        ) +
   facet_wrap(facets = vars(dist_measure), scales = "free_y" ,labeller = labeller(dist_measure = measures.new)) +
   labs(x = NULL, y = "Predicted time to reach target (yr)")
 p
 
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa--Bray-Jaccard-ASV-Genus-Family-Order-Class-Phylum-PRUNED.tiff"), width = 10, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study_and_metric) 
+# [1] "Alcoa__Bray-Curtis\nASV-level"    "Alcoa__Bray-Curtis\nGenus-level"  "Alcoa__Bray-Curtis\nFamily-level"
+# [4] "Alcoa__Bray-Curtis\nOrder-level"  "Alcoa__Bray-Curtis\nClass-level"  "Alcoa__Bray-Curtis\nPhylum-level"
+# [7] "Alcoa__Jaccard\nASV-level"        "Alcoa__Jaccard\nGenus-level"      "Alcoa__Jaccard\nFamily-level"    
+# [10] "Alcoa__Jaccard\nOrder-level"      "Alcoa__Jaccard\nClass-level"      "Alcoa__Jaccard\nPhylum-level"  
+
+## "Alcoa__Bray-Curtis\nASV-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 43 (39, 50), n = 100"
+
+
+## "Alcoa__Bray-Curtis\nGenus-level" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nGenus-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nGenus-level - Recovery time: median (2.5th, 97.5th percentile)] : 34 (31, 38.525), n = 100"
+
+## "Alcoa__Bray-Curtis\nFamily-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nFamily-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nFamily-level - Recovery time: median (2.5th, 97.5th percentile)] : 33 (30.475, 39), n = 100"
+
+## "Alcoa__Bray-Curtis\nOrder-level" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nOrder-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nOrder-level - Recovery time: median (2.5th, 97.5th percentile)] : 35 (32, 40), n = 100"
+
+## "Alcoa__Bray-Curtis\nClass-level" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nClass-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nClass-level - Recovery time: median (2.5th, 97.5th percentile)] : 50 (43.475, 63.05), n = 100"
+
+## "Alcoa__Bray-Curtis\nPhylum-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nPhylum-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nPhylum-level - Recovery time: median (2.5th, 97.5th percentile)] : 51 (43.475, 67.575), n = 100"
+
+
+## "Alcoa__Jaccard\nASV-level"     
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 60.5 (51, 81.05), n = 100"
+
+## "Alcoa__Jaccard\nGenus-level"   
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nGenus-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nGenus-level - Recovery time: median (2.5th, 97.5th percentile)] : 487.5 (219.475, 500), n = 100"
+
+## "Alcoa__Jaccard\nFamily-level"    
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nFamily-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nFamily-level - Recovery time: median (2.5th, 97.5th percentile)] : 198 (118.425, 420.775), n = 100"
+
+## "Alcoa__Jaccard\nOrder-level"   
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nOrder-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nOrder-level - Recovery time: median (2.5th, 97.5th percentile)] : 258 (142, 500), n = 100"
+
+## "Alcoa__Jaccard\nClass-level"   
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nClass-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nClass-level - Recovery time: median (2.5th, 97.5th percentile)] : 500 (500, 500), n = 100"
+
+## "Alcoa__Jaccard\nPhylum-level"  
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nPhylum-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nPhylum-level - Recovery time: median (2.5th, 97.5th percentile)] : 500 (60.9, 500), n = 100"
+
+
 #-------------------------
+
 
 #### facet_grid trajectory plots + predict time to reach ref:
 ##   ASV -- Jaccard + Bray-Curtis -- Genus + Family + ... Phylum -- Alcoa (NOT PRUNED)
@@ -22911,6 +24578,26 @@ for (i in 1:length(studies)) {
     
     newdat <- newdat[-sel.na, ]
     
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
 
     # prep output dataframe for prediction model to populate
     sel.dup <- which(duplicated(newdat$group)==TRUE)
@@ -22935,8 +24622,6 @@ for (i in 1:length(studies)) {
     
     # NOW using "logarithmic" model only !!!!!
     
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
     
     
     for (b in 1:100) {
@@ -23062,8 +24747,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
   geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
   #geom_line(data= pred_models_alldata, aes(  x=group, y=similarity, group = 1), colour = "#e34a33" ) + # "red"
   
-  geom_boxplot(outlier.shape = NA, width = 2) +
-  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
   
   theme_bw() +
   geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
@@ -23073,7 +24758,11 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         #axis.ticks.x = element_line(linetype = 0)
-        axis.ticks.x = element_line(linetype = x_ticks)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
+        
   ) +
   labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
   facet_grid(rows = vars(dist_measure), cols = vars(NEW_newfacet_x), scales = "fixed")
@@ -23081,7 +24770,7 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
 p
 
 
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Restoration-trajectories--Alcoa--Bray-Jaccard-ASV-Genus-Family-Order-Class-Phylum-NON-PRUNED-B-with-Preds.tiff"), width = 18, height = 10, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -23174,76 +24863,74 @@ pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
 
 dim(pred_models_boot) # 19200    12
 
-dat.sum <- pred_models_boot
-head(dat.sum)
-# study                facet_x              study_and_metric group group_num similarity boot_no ref_median
-# 11 Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     2         2   9.389107       1   35.55047
-# 2  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     8         8  21.149581       1   35.55047
-# 3  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    14        14  25.897020       1   35.55047
-# 4  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    17        17  27.544121       1   35.55047
-# 5  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    25        25  30.815846       1   35.55047
-# 6  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    29        29  32.074951       1   35.55047
-# pred_time_to_ref_median   pred_type NEW_newfacet_x dist_measure
-# 11                      44 logarithmic      ASV-level  Bray-Curtis
-# 2                       44 logarithmic      ASV-level  Bray-Curtis
-# 3                       44 logarithmic      ASV-level  Bray-Curtis
-# 4                       44 logarithmic      ASV-level  Bray-Curtis
-# 5                       44 logarithmic      ASV-level  Bray-Curtis
-# 6                       44 logarithmic      ASV-level  Bray-Curtis
 
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
+
+df <- data.frame(study_and_metric = rep(c(
+  "Alcoa__Bray-Curtis\nASV-level",
+  "Alcoa__Bray-Curtis\nGenus-level",
+  "Alcoa__Bray-Curtis\nFamily-level",
+  "Alcoa__Bray-Curtis\nOrder-level" ,
+  "Alcoa__Bray-Curtis\nClass-level" ,
+  "Alcoa__Bray-Curtis\nPhylum-level",
+  
+  "Alcoa__Jaccard\nASV-level"  ,
+  "Alcoa__Jaccard\nGenus-level" ,
+  "Alcoa__Jaccard\nFamily-level" ,
+  "Alcoa__Jaccard\nOrder-level" ,
+  "Alcoa__Jaccard\nClass-level" ,
+  "Alcoa__Jaccard\nPhylum-level"
+),each=100),
+boot_no = rep(1:100, times=12),
+pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
   #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"],") yr."))
+  this_study_and_metric <- df$study_and_metric[i]
+  #this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study_and_metric == this_study_and_metric & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study and metric: ", this_study_and_metric," ; boot_no: ",this_boot," ; i = ",i))
 }
-# [1] "Alcoa__Bray-Curtis\nASV-level: 43 (39, 49) yr."
-# [1] "Alcoa__Bray-Curtis\nGenus-level: 37 (34, 42) yr."
-# [1] "Alcoa__Bray-Curtis\nFamily-level: 36 (32.95, 41) yr."
-# [1] "Alcoa__Bray-Curtis\nOrder-level: 35 (32, 39.05) yr."
-# [1] "Alcoa__Bray-Curtis\nClass-level: 47 (42, 57) yr."
-# [1] "Alcoa__Bray-Curtis\nPhylum-level: 51 (44.95, 65) yr."
-# [1] "Alcoa__Jaccard\nASV-level: 60.5 (51, 79) yr."
-# [1] "Alcoa__Jaccard\nGenus-level: 224 (120.8, 500) yr."
-# [1] "Alcoa__Jaccard\nFamily-level: 263.5 (154.95, 500) yr."
-# [1] "Alcoa__Jaccard\nOrder-level: 292 (150.95, 500) yr."
-# [1] "Alcoa__Jaccard\nClass-level: 500 (409.9, 500) yr."
-# [1] "Alcoa__Jaccard\nPhylum-level: 500 (95.8500000000001, 500) yr."
 
+
+df.temp <- df
 
 ## plot time to target
 
-names(pred_models_boot)
-# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"              
-# [11] "NEW_newfacet_x"          "dist_measure" 
 
-p <- ggplot(data=pred_models_boot, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median, color = dist_measure)) +
-  geom_boxplot() +
-  theme_bw() +
-  theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        
-        strip.background = element_blank(),
-        strip.text.x = element_blank()
-  ) +
-  facet_wrap(facets = vars(dist_measure), scales = "free_y" ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)")
-p
+df$NEW_newfacet_x <- NA
+df$dist_measure <- NA
 
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa--Bray-Jaccard-ASV-Genus-Family-Order-Class-PhylumNON-PRUNED.tiff"), width = 14, height = 10, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+sel <- grep(pattern = "Jaccard", x = df$study_and_metric)
+df$dist_measure[sel] <- "Jaccard"
+sel <- grep(pattern = "Bray-Curtis", x = df$study_and_metric)
+df$dist_measure[sel] <- "Bray-Curtis"
 
-df <- pred_models_boot
-df$dist_measure <- factor(df$dist_measure, levels=c("Jaccard","Bray-Curtis"), ordered = TRUE)
+sel <- grep(pattern = "ASV-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "ASV-level"
+sel <- grep(pattern = "Genus-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Genus-level"
+sel <- grep(pattern = "Family-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Family-level"
+sel <- grep(pattern = "Order-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Order-level"
+sel <- grep(pattern = "Class-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Class-level"
+sel <- grep(pattern = "Phylum-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Phylum-level"
+
+
+df$dist_measure <- factor(df$dist_measure, levels = c("Jaccard","Bray-Curtis"), ordered = TRUE)
+df$NEW_newfacet_x <- factor(df$NEW_newfacet_x, levels = c("ASV-level",
+                                                          "Genus-level",
+                                                          "Family-level",
+                                                          "Order-level" ,
+                                                          "Class-level" ,
+                                                          "Phylum-level"), ordered = TRUE)
+
+
 measures.new <- c(`Bray-Curtis`="Bray-Curtis\nNon-pruned", Jaccard="Jaccard\nNon-pruned" )
 
 
@@ -23252,18 +24939,130 @@ p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) +
   theme_bw() +
   theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
         panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()#,
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.background = element_blank()
   ) +
   facet_wrap(facets = vars(dist_measure), scales = "free_y" ,labeller = labeller(dist_measure = measures.new)) +
-  #labs(x = NULL, y = "Predicted time to reach target (yr)")
-  labs(x = NULL, y = NULL)
+  labs(x = NULL, y = "Predicted time to reach target (yr)")
 p
 
-#grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+#grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa--Bray-Jaccard-ASV-Genus-Family-Order-Class-Phylum-NON-PRUNED.tiff"), width = 10, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study_and_metric) 
+# [1] "Alcoa__Bray-Curtis\nASV-level"    "Alcoa__Bray-Curtis\nGenus-level"  "Alcoa__Bray-Curtis\nFamily-level"
+# [4] "Alcoa__Bray-Curtis\nOrder-level"  "Alcoa__Bray-Curtis\nClass-level"  "Alcoa__Bray-Curtis\nPhylum-level"
+# [7] "Alcoa__Jaccard\nASV-level"        "Alcoa__Jaccard\nGenus-level"      "Alcoa__Jaccard\nFamily-level"    
+# [10] "Alcoa__Jaccard\nOrder-level"      "Alcoa__Jaccard\nClass-level"      "Alcoa__Jaccard\nPhylum-level"  
+
+## "Alcoa__Bray-Curtis\nASV-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 43 (39, 50), n = 100"
+
+
+## "Alcoa__Bray-Curtis\nGenus-level" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nGenus-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+#  "Alcoa__Bray-Curtis\nGenus-level - Recovery time: median (2.5th, 97.5th percentile)] : 37 (33.475, 43.525), n = 100"
+
+## "Alcoa__Bray-Curtis\nFamily-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nFamily-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nFamily-level - Recovery time: median (2.5th, 97.5th percentile)] : 36 (32, 41.525), n = 100"
+
+## "Alcoa__Bray-Curtis\nOrder-level" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nOrder-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nOrder-level - Recovery time: median (2.5th, 97.5th percentile)] : 35 (32, 40), n = 100"
+
+## "Alcoa__Bray-Curtis\nClass-level" 
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nClass-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nClass-level - Recovery time: median (2.5th, 97.5th percentile)] : 47 (40.475, 58.05), n = 100"
+
+## "Alcoa__Bray-Curtis\nPhylum-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nPhylum-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nPhylum-level - Recovery time: median (2.5th, 97.5th percentile)] : 51 (43.475, 67.575), n = 100"
+
+
+
+## "Alcoa__Jaccard\nASV-level"     
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 60.5 (51, 81.05), n = 100"
+
+## "Alcoa__Jaccard\nGenus-level"   
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nGenus-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nGenus-level - Recovery time: median (2.5th, 97.5th percentile)] : 224 (110.7, 500), n = 100"
+
+## "Alcoa__Jaccard\nFamily-level"    
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nFamily-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nFamily-level - Recovery time: median (2.5th, 97.5th percentile)] : 263.5 (145.9, 500), n = 100"
+
+## "Alcoa__Jaccard\nOrder-level"   
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nOrder-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+#  "Alcoa__Jaccard\nOrder-level - Recovery time: median (2.5th, 97.5th percentile)] : 292 (124.225, 500), n = 100"
+
+## "Alcoa__Jaccard\nClass-level"   
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nClass-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nClass-level - Recovery time: median (2.5th, 97.5th percentile)] : 500 (361.425, 500), n = 100"
+
+## "Alcoa__Jaccard\nPhylum-level"  
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nPhylum-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Jaccard\nPhylum-level - Recovery time: median (2.5th, 97.5th percentile)] : 500 (60.9, 500), n = 100"
+
+
 #-------------------------
+
 
 #### facet_grid trajectory plots + predict time to reach ref:
 ##   ASV -- Jaccard + Bray-Curtis -- All + >0.001 + >0.01 + >0.1 -- Alcoa
@@ -23514,6 +25313,26 @@ for (i in 1:length(studies)) {
     
     newdat <- newdat[-sel.na, ]
     
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
 
     # prep output dataframe for prediction model to populate
     sel.dup <- which(duplicated(newdat$group)==TRUE)
@@ -23539,8 +25358,6 @@ for (i in 1:length(studies)) {
     
     # NOW using "logarithmic" model only !!!!!
     
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
     
     
     for (b in 1:100) {
@@ -23658,8 +25475,8 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
   geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
   #geom_line(data= pred_models_alldata, aes(  x=group, y=similarity, group = 1), colour = "#e34a33" ) + # "red"
   
-  geom_boxplot(outlier.shape = NA, width = 2) +
-  #geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
   
   theme_bw() +
   geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
@@ -23669,7 +25486,10 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         #axis.ticks.x = element_line(linetype = 0)
-        axis.ticks.x = element_line(linetype = x_ticks)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
   ) +
   labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
   facet_grid(rows = vars(dist_measure), cols = vars(NEW_newfacet_x), scales = "fixed")
@@ -23748,90 +25568,164 @@ pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
 
 dim(pred_models_boot) # 12800    12
 
-dat.sum <- pred_models_boot
-head(dat.sum)
-#   study                facet_x              study_and_metric group group_num similarity boot_no ref_median
-# 11 Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     2         2   9.389107       1   35.55047
-# 2  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level     8         8  21.149581       1   35.55047
-# 3  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    14        14  25.897020       1   35.55047
-# 4  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    17        17  27.544121       1   35.55047
-# 5  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    25        25  30.815846       1   35.55047
-# 6  Alcoa Bray-Curtis\nASV-level Alcoa__Bray-Curtis\nASV-level    29        29  32.074951       1   35.55047
-# pred_time_to_ref_median   pred_type NEW_newfacet_x dist_measure
-# 11                      44 logarithmic       All ASVs  Bray-Curtis
-# 2                       44 logarithmic       All ASVs  Bray-Curtis
-# 3                       44 logarithmic       All ASVs  Bray-Curtis
-# 4                       44 logarithmic       All ASVs  Bray-Curtis
-# 5                       44 logarithmic       All ASVs  Bray-Curtis
-# 6                       44 logarithmic       All ASVs  Bray-Curtis
 
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
+unique( pred_models_boot$study_and_metric)
+# [1] Alcoa__Bray-Curtis\nASV-level           Alcoa__>0.001% - Bray-Curtis\nASV-level Alcoa__>0.01% - Bray-Curtis\nASV-level 
+# [4] Alcoa__>0.1% - Bray-Curtis\nASV-level   Alcoa__Jaccard\nASV-level               Alcoa__>0.001% - Jaccard\nASV-level    
+# [7] Alcoa__>0.01% - Jaccard\nASV-level      Alcoa__>0.1% - Jaccard\nASV-level      
+# 8 Levels: Alcoa__Bray-Curtis\nASV-level Alcoa__>0.001% - Bray-Curtis\nASV-level ... Alcoa__>0.1% - Jaccard\nASV-level
+
+
+df <- data.frame(study_and_metric = rep(c(
+  "Alcoa__Bray-Curtis\nASV-level",
+  "Alcoa__>0.001% - Bray-Curtis\nASV-level",
+  "Alcoa__>0.01% - Bray-Curtis\nASV-level", 
+  "Alcoa__>0.1% - Bray-Curtis\nASV-level" ,
+  
+  "Alcoa__Jaccard\nASV-level" ,
+  "Alcoa__>0.001% - Jaccard\nASV-level" ,
+  "Alcoa__>0.01% - Jaccard\nASV-level" ,
+  "Alcoa__>0.1% - Jaccard\nASV-level"
+),each=100),
+boot_no = rep(1:100, times=8),
+pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
   #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"],")"))
+  this_study_and_metric <- df$study_and_metric[i]
+  #this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study_and_metric == this_study_and_metric & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study and metric: ", this_study_and_metric," ; boot_no: ",this_boot," ; i = ",i))
 }
-# [1] "Alcoa__Bray-Curtis\nASV-level: 43 (39, 49)"
-# [1] "Alcoa__>0.001% - Bray-Curtis\nASV-level: 45 (40, 51)"
-# [1] "Alcoa__>0.01% - Bray-Curtis\nASV-level: 48 (43, 55)"
-# [1] "Alcoa__>0.1% - Bray-Curtis\nASV-level: 38 (34.95, 43)"
-# [1] "Alcoa__Jaccard\nASV-level: 60.5 (51, 79)"
-# [1] "Alcoa__>0.001% - Jaccard\nASV-level: 72.5 (60, 99.1499999999999)"
-# [1] "Alcoa__>0.01% - Jaccard\nASV-level: 56 (48, 68.0999999999999)"
-# [1] "Alcoa__>0.1% - Jaccard\nASV-level: 29 (27, 31.05)"
 
+
+df.temp <- df
 
 ## plot time to target
 
-names(pred_models_boot)
-# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"              
-# [11] "NEW_newfacet_x"          "dist_measure" 
 
-p <- ggplot(data=pred_models_boot, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median, color = dist_measure)) +
-  geom_boxplot() +
-  theme_bw() +
-  theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()
-  ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)")
-p
+df$NEW_newfacet_x <- NA
+df$dist_measure <- NA
 
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa--ASV-Bray-Jaccard-Dominant-Taxa.tiff"), width = 14, height = 10, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+sel <- grep(pattern = "Jaccard", x = df$study_and_metric)
+df$dist_measure[sel] <- "Jaccard"
+sel <- grep(pattern = "Bray-Curtis", x = df$study_and_metric)
+df$dist_measure[sel] <- "Bray-Curtis"
 
 
-df <- pred_models_boot
+sel <- grep(pattern = "Alcoa__Bray-Curtis\nASV-level|Alcoa__Jaccard\nASV-level", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "All ASVs"
+sel <- grep(pattern = ">0.001%", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- ">0.001%"
+sel <- grep(pattern = ">0.01%", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- ">0.01%"
+sel <- grep(pattern = ">0.1%", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- ">0.1%"
+
+
 df$dist_measure <- factor(df$dist_measure, levels=c("Jaccard","Bray-Curtis"), ordered = TRUE)
 unique(df$NEW_newfacet_x)
-# [1] All ASVs     ASVs >0.001% ASVs >0.01%  ASVs >0.1%  
-# Levels: All ASVs < ASVs >0.001% < ASVs >0.01% < ASVs >0.1%
+# "All ASVs" ">0.001%"  ">0.01%"   ">0.1%"  
 
 df$NEW_newfacet_x <- factor(df$NEW_newfacet_x,
-                            levels=c("All ASVs", "ASVs >0.001%", "ASVs >0.01%", "ASVs >0.1%"),
-                            labels = c("All ASVs", ">0.001%", ">0.01%", ">0.1%"), ordered = TRUE)
+                           levels=c("All ASVs", ">0.001%",  ">0.01%",   ">0.1%" ),
+                           ordered = TRUE)
 
 p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) +
   geom_boxplot() +
   theme_bw() +
   theme(axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
         panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()#,
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.background = element_blank()
+        
   ) +
   facet_wrap(facets = vars(dist_measure), scales = "free_y" ) +
   labs(x = NULL, y = "Predicted time to reach target (yr)")
 p
 
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa--ASV-Bray-Jaccard-Dominant-Taxa-C.tiff"), width = 12, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
+grid.text(label = "(c)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa--ASV-Bray-Jaccard-Dominant-Taxa-c.tiff"), width = 12, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
+
+
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study_and_metric) 
+# [1] "Alcoa__Bray-Curtis\nASV-level"           "Alcoa__>0.001% - Bray-Curtis\nASV-level" "Alcoa__>0.01% - Bray-Curtis\nASV-level" 
+# [4] "Alcoa__>0.1% - Bray-Curtis\nASV-level"   "Alcoa__Jaccard\nASV-level"               "Alcoa__>0.001% - Jaccard\nASV-level"    
+# [7] "Alcoa__>0.01% - Jaccard\nASV-level"      "Alcoa__>0.1% - Jaccard\nASV-level"  
+
+## "Alcoa__Bray-Curtis\nASV-level"
+sel <- which(df$study_and_metric == "Alcoa__Bray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Bray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 43 (39, 50), n = 100"
+
+
+## "Alcoa__>0.001% - Bray-Curtis\nASV-level" 
+sel <- which(df$study_and_metric == "Alcoa__>0.001% - Bray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__>0.001% - Bray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 45 (40, 51.525), n = 100"
+
+## "Alcoa__>0.01% - Bray-Curtis\nASV-level" 
+sel <- which(df$study_and_metric == "Alcoa__>0.01% - Bray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__>0.01% - Bray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 48 (43, 56.525), n = 100"
+
+## "Alcoa__>0.1% - Bray-Curtis\nASV-level" 
+sel <- which(df$study_and_metric == "Alcoa__>0.1% - Bray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__>0.1% - Bray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 38 (34, 43), n = 100"
+
+
+## "Alcoa__Jaccard\nASV-level"        
+sel <- which(df$study_and_metric == "Alcoa__Jaccard\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+#  "Alcoa__Jaccard\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 60.5 (51, 81.05), n = 100"
+
+## "Alcoa__>0.001% - Jaccard\nASV-level"    
+sel <- which(df$study_and_metric == "Alcoa__>0.001% - Jaccard\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__>0.001% - Jaccard\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 72.5 (59.475, 106.1), n = 100"
+
+## "Alcoa__>0.01% - Jaccard\nASV-level"   
+sel <- which(df$study_and_metric == "Alcoa__>0.01% - Jaccard\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__>0.01% - Jaccard\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 56 (48, 71.05), n = 100"
+
+## "Alcoa__>0.1% - Jaccard\nASV-level"  
+sel <- which(df$study_and_metric == "Alcoa__>0.1% - Jaccard\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__>0.1% - Jaccard\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 29 (27, 32), n = 100"
 
 
 #-------------------------
@@ -24040,8 +25934,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco, colour = factor(group) )
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ALCOA-A.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ALCOA-a.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 ## for each rehab age determine if there is excess spatial auto-correlation??
@@ -24175,8 +26069,8 @@ p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,colo
   guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA))) +
   labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Bray-Curtis)\nRehab vs. Ref samples")
 p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-ALCOA-B.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-ALCOA-b.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -24207,8 +26101,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(gro
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ALCOA-SACORRECTED-C.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(c)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ALCOA-SACORRECTED-c.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -24374,548 +26268,6 @@ df_anno[["Alcoa-Bray-ASV-withTree-SAcorrected"]] <- anno
 
 #-------------------------
 
-#### Investigating spatial auto-correlation -- Alcoa -- Jaccard
-#-------------------------
-
-names(df_results)
-
-phy_in <- phy.alcoa.withTree
-min(taxa_sums(phy_in)) # 2
-sum(sample_sums(phy_in)) # 1772249
-
-# rarefy #1
-seed <- 123
-r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
-                           rngseed = seed, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
-min(taxa_sums(r1.ps)) # 1
-sample_sums(r1.ps) # all 17485 
-ntaxa(r1.ps) # 30751
-sum(sample_sums(r1.ps)) # 629460
-
-r1.ps
-# phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 30751 taxa and 36 samples ]
-# sample_data() Sample Data:       [ 36 samples by 70 sample variables ]
-# tax_table()   Taxonomy Table:    [ 30751 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 30751 tips and 30749 internal nodes ]
-
-
-r1.ps@sam_data$`Date since change in Land Use`
-r1.ps@sam_data$Notes
-
-r1.ps@sam_data$group <- r1.ps@sam_data$`Date since change in Land Use`
-sel <- which(r1.ps@sam_data$Notes == "adjacent natural") # qty 18
-r1.ps@sam_data$group[sel] <- "Ref"
-unique(r1.ps@sam_data$group)
-# "2014" "Ref"  "2008" "1991" "1987" "2002" "1999"
-
-r1.ps@sam_data$group <- factor( r1.ps@sam_data$group, 
-                                levels = c("2014","2008","2002","1999","1991","1987","Ref"),
-                                labels = c("2","8","14","17","25","29","Ref"), ordered=TRUE)
-# Alcoa (sampled in 2016; rehab 2-29 yr old)
-
-
-
-
-df_out <- df_results[[ "Alcoa-Jaccard-ASV-withTree" ]]
-
-
-names(r1.ps@sam_data) # includes ...
-# [1] "FULL_ID"                                               "Sample_id"                                            
-# [3] "Date sampled"                                          "lat raw"                                              
-# [5] "lon raw"                                               "lat (-) in decimal degrees"                           
-# [7] "long in decimal degrees"           
-
-#r1.ps@sam_data$`lat raw`
-r1.ps@sam_data$`lat (-) in decimal degrees`
-#r1.ps@sam_data$`lon raw`
-r1.ps@sam_data$`long in decimal degrees`
-
-head(r1.ps@otu_table)
-otu_tab <- t( as(r1.ps@otu_table, "matrix"))
-
-dist.jacc <- vegan::vegdist(x = otu_tab, method = "jaccard", binary = TRUE)
-str(dist.jacc)
-dist.jacc <- as(dist.jacc, "matrix")
-
-identical(colnames(dist.jacc),rownames(dist.jacc)) # TRUE
-
-
-## determine spatial auto-correlation
-
-# data.frame containing longitude and latitude coordinates
-
-long_lats <- data.frame( xlong=r1.ps@sam_data$`long in decimal degrees`,
-                         ylat =r1.ps@sam_data$`lat (-) in decimal degrees`
-)
-row.names(long_lats) <- row.names(r1.ps@sam_data)
-
-# calculate matrix of pairwise distances between all points
-geo_dist.m <- geodist(long_lats, measure = "haversine")
-
-geo_dist <- as.data.frame( geo_dist.m )
-row.names(geo_dist) <- row.names(r1.ps@sam_data)
-colnames(geo_dist) <- row.names(r1.ps@sam_data)
-
-# check that colnames and row.names align
-identical(row.names(geo_dist),row.names(dist.bray)) # TRUE
-identical(colnames(geo_dist),colnames(dist.bray)) # TRUE
-
-identical(colnames(dist.bray), row.names(dist.bray)) # TRUE
-
-
-df_eco <- dist.jacc
-
-df_ecogeocor <- data.frame(samp= rep( x = colnames(df_eco), each=length( colnames(df_eco) ) ),
-                           compare_with = rep( x = colnames(df_eco), times = length(colnames(df_eco))),
-                           
-                           samp_type=NA,
-                           compare_with_type=NA,
-                           
-                           dist_eco=NA,
-                           dist_geo=NA
-)
-
-for (i in 1:dim(df_ecogeocor)[1]) {
-  #i<-1
-  this_samp <- df_ecogeocor$samp[i]
-  this_compare <- df_ecogeocor$compare_with[i]
-  sel1 <- which( row.names(r1.ps@sam_data) == this_samp)
-  df_ecogeocor$samp_type[i] <- as.character( r1.ps@sam_data$group[sel1] )
-  
-  sel2 <- which( row.names(r1.ps@sam_data) == this_compare)
-  df_ecogeocor$compare_with_type[i] <- as.character( r1.ps@sam_data$group[sel2] )
-  
-  row <- which(rownames(df_eco)==this_samp)
-  col <- which(colnames(df_eco)==this_compare)
-  df_ecogeocor$dist_eco[i] <- df_eco[row,col]
-  
-  row <- which(rownames(geo_dist)==this_samp)
-  col <- which(colnames(geo_dist)==this_compare)
-  df_ecogeocor$dist_geo[i] <- geo_dist[row,col]
-  
-  print(paste0("completed ",i))
-}
-
-dim(df_ecogeocor) #  1296    6
-
-# remove remnant self-comparisons
-sel <- which(df_ecogeocor$samp==df_ecogeocor$compare_with) # qty 36
-identical( which(df_ecogeocor$samp==df_ecogeocor$compare_with), which(df_ecogeocor$dist_eco==0) ) # TRUE
-df_ecogeocor <- df_ecogeocor[-sel, ]
-dim(df_ecogeocor) # 1260    6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-summary(df_ecogeocor$dist_eco)
-
-head(df_ecogeocor)
-# samp compare_with samp_type compare_with_type  dist_eco  dist_geo
-# 2 X39041       X39043         2               Ref 0.8883514   73.7641
-# 3 X39041       X39045         2                 2 0.6712861 3879.6268
-# 4 X39041       X39047         2               Ref 0.8808063 3927.1052
-# 5 X39041       X39049         2                 2 0.6708695 2828.6415
-# 6 X39041       X39051         2               Ref 0.8836938 2797.7893
-# 7 X39041       X39053         2                 8 0.7701849 2408.0242
-
-
-# consider only compare with type 'Ref' as that is focus 
-# and potential for problematic study design and analysis
-
-sel <- which(df_ecogeocor$compare_with_type=="Ref") # 630
-df_ecogeocor <- df_ecogeocor[sel, ]
-dim(df_ecogeocor) # 630   6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-
-names(df_ecogeocor)
-# [1] "samp"              "compare_with"      "samp_type"         "compare_with_type" "dist_eco"         
-# [6] "dist_geo" 
-
-
-unique(df_ecogeocor$samp_type)
-# "2"   "Ref" "8"   "25"  "29"  "14"  "17" 
-
-df_ecogeocor$group <- df_ecogeocor$samp_type
-df_ecogeocor$group <- factor(df_ecogeocor$group, 
-                             levels=c("2","8","14","17","25","29","Ref"),
-                             labels=c("2 yr","8 yr","14 yr","17 yr","25 yr","29 yr","Ref"),
-                             ordered = TRUE)
-length(levels(df_ecogeocor$group)) # 7
-
-# #library(viridis); packageVersion("viridis") # ‘0.5.1’
-# cols.group <- viridis(n=length(levels(df_ecogeocor$group)))
-# names(cols.group) <- levels(df_ecogeocor$group)
-
-cols.group <- cols.group.alcoa
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "2 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "8 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "14 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "17 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "25 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "29 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.4, label = "Original data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.8)),
-    legend.text = element_text(size=rel(0.7))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-ALCOA-A.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-## for each rehab age determine if there is excess spatial auto-correlation??
-## expect increasing eco-distance with increasing geo-distance
-## if this occurs, does it occur at a rate greater 
-
-( reveg_groups <- levels(df_ecogeocor$group) )
-# "2 yr"  "8 yr"  "14 yr" "17 yr" "25 yr" "29 yr" "Ref"
-
-
-
-dim(df_ecogeocor) # 630  7
-dim(df_out)       # 630  12
-
-head(df_ecogeocor)
-# samp compare_with samp_type compare_with_type  dist_eco  dist_geo group
-# 2  X39041       X39043         2               Ref 0.8883514   73.7641  2 yr
-# 4  X39041       X39047         2               Ref 0.8808063 3927.1052  2 yr
-# 6  X39041       X39051         2               Ref 0.8836938 2797.7893  2 yr
-# 8  X39041       X39055         2               Ref 0.8975366 2264.7422  2 yr
-# 10 X39041       X39059         2               Ref 0.8794687 9779.8129  2 yr
-# 12 X39041       X39063         2               Ref 0.9128551 8736.8677  2 yr
-
-head(df_out)
-# samp compare_with     site             site_full_desc year_rehab similarity group dist_measure       tax_level study corrected            facet_x
-# 1 X39041       X39043 karri 11 karri 11 (post mine rehab)       2014  11.164864     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 2 X39041       X39047 karri 11 karri 11 (post mine rehab)       2014  11.919369     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 3 X39041       X39051 karri 11 karri 11 (post mine rehab)       2014  11.630619     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 4 X39041       X39055 karri 11 karri 11 (post mine rehab)       2014  10.246344     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 5 X39041       X39059 karri 11 karri 11 (post mine rehab)       2014  12.053126     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 6 X39041       X39063 karri 11 karri 11 (post mine rehab)       2014   8.714487     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-
-identical(df_ecogeocor$samp,df_out$samp) # TRUE
-identical(df_ecogeocor$compare_with,df_out$compare_with) # TRUE
-
-
-df_ecogeocor$similarity <- df_out$similarity
-df_ecogeocor$tax_level <- df_out$tax_level
-df_ecogeocor$study <- df_out$study
-df_ecogeocor$dist_measure <- df_out$dist_measure
-df_ecogeocor$facet_x <- df_out$facet_x
-df_ecogeocor$similarity_corr <- NA
-df_ecogeocor$dist_eco_corr <- NA
-
-
-preds.temp <- data.frame(dist_geo = sort( unique(df_ecogeocor$dist_geo)))
-diff_models <- list()
-
-
-for (i in 1:(length(reveg_groups)-1)) {
-  #i<-1
-  this_group <- reveg_groups[i]
-  
-  x <- df_ecogeocor %>% filter(group == reveg_groups[i])
-  x_ref <- df_ecogeocor %>% filter(group == "Ref")
-  #dim(x) # 54 14
-  #dim(x_ref) # 306  14
-  # mean centre eco-distances
-  x$dist_eco_mc <- x$dist_eco - mean(x$dist_eco)
-  #plot(x$dist_geo,x$dist_eco_mc)
-  x_ref$dist_eco_mc <- x_ref$dist_eco - mean(x_ref$dist_eco)
-  #plot(x_ref$dist_geo,x_ref$dist_eco_mc)
-  
-  #model each spatial trend
-  m <- lm(data=x, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  m_ref <- lm(data=x_ref, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  preds <- preds.temp
-  # # limit predictions to max dist_geo
-  # sel <- which(preds$dist_geo <= max(x$dist_geo))
-  # limit predictions to extent of dist_geo
-  sel <- which(preds$dist_geo >= min(x$dist_geo) & preds$dist_geo <= max(x$dist_geo))
-  
-  preds <- as.data.frame( preds[sel, ] )
-  names(preds)[1] <- "dist_geo" # need to rename field; it is lost in previous step
-  preds$m <- predict(m, newdata = preds)
-  preds$m_ref <- predict(m_ref, newdata = preds)
-  #plot(preds$dist_geo,preds$m,col="red")
-  #points(preds$dist_geo,preds$m_ref,col="green")
-  preds$diff <- preds$m - preds$m_ref
-  preds$group <- this_group
-  #points(preds$dist_geo,preds$diff,col="orange")
-  plot(preds$dist_geo,preds$diff,col="orange", main = paste0("Diff Reveg age: ",this_group))
-  # apply correction to similarity
-  sel.df <- which(df_ecogeocor$group == this_group)
-  for (j in 1:length(sel.df)) {
-    #j<-1
-    sel.pred <- which(preds$dist_geo == df_ecogeocor$dist_geo[ sel.df[j] ])
-    this_diff_dist_eco <- preds$diff[sel.pred]
-    # similarity = 100*(1 - distance)
-    # corrected similarity = 100*[1 -  (distance - distance-correction)]
-    df_ecogeocor$similarity[ sel.df[j] ] # 13.10838
-    df_ecogeocor$similarity_corr[ sel.df[j] ] <- 100*(1 - (df_ecogeocor$dist_eco[ sel.df[j] ] - this_diff_dist_eco))
-    df_ecogeocor$dist_eco_corr[ sel.df[j] ] <- 1 - (1/100)*df_ecogeocor$similarity_corr[ sel.df[j] ]
-  }
-  plot(df_ecogeocor$similarity[ sel.df ], df_ecogeocor$similarity_corr[ sel.df ], main = paste0("Group: ",this_group))
-  diff_models[[this_group]] <- preds
-  print(paste0("completed ",i))
-}
-
-## but note there will be no 'corrected' values for the "Ref" samples - so just use previous values 
-sel <- which(df_ecogeocor$group == "Ref")
-df_ecogeocor$similarity_corr[sel] # all NAs
-df_ecogeocor$dist_eco_corr[sel] # all NAs
-df_ecogeocor$similarity_corr[sel] <- df_ecogeocor$similarity[sel]
-df_ecogeocor$dist_eco_corr[sel]   <- df_ecogeocor$dist_eco[sel]
-
-
-## plot modelled data for excess spatial auto-correlation 
-
-names(diff_models) # "3 yr"  "9 yr"  "15 yr" "18 yr" "26 yr" "30 yr"
-
-pdata <- diff_models[[1]]
-for (i in 2:length(diff_models)) {
-  pdata <- rbind(pdata,diff_models[[i]])
-}
-dim(pdata) # 2362    5
-names(pdata) # "dist_geo" "m"        "m_ref"    "diff"     "group"
-unique(pdata$group) # "2 yr"  "8 yr"  "14 yr" "17 yr" "25 yr" "29 yr"
-pdata$group <- factor(pdata$group, levels=c("2 yr","8 yr","14 yr","17 yr","25 yr","29 yr"),
-                      ordered=TRUE)
-
-p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,color=factor(group)
-  #geom_point( alpha = 0.6) +
-  #geom_point() +# pdata %>% filter(group == "3 yr"),aes(x=dist_geo,y=diff)) +
-  geom_line(size=1) +
-  geom_hline(yintercept = 0, size=0.5, linetype="dashed", colour="grey") +
-  theme_bw() +
-  scale_color_manual(values=cols.group[-length(cols.group)]) +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.8)),
-    legend.text = element_text(size=rel(0.7))
-  ) +
-  #ylim(0,0.2) +
-  guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA))) +
-  labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Jaccard)\nRehab vs. Ref samples")
-p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Jaccard-ALCOA-B.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-## plot corrected distributions ...
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "2 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "8 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "14 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "17 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "25 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "29 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.43, label = "Corrected data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.8)),
-    legend.text = element_text(size=rel(0.7))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-ALCOA-SACORRECTED-C.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-names(df_results)
-names(df_results[[1]])
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"         
-# [8] "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"
-
-names(df_ecogeocor)
-
-## make names of df_ecogeocor compatible with df_out
-head(df_out)
-# samp compare_with     site             site_full_desc year_rehab similarity group dist_measure       tax_level study corrected            facet_x
-# 1 X39041       X39043 karri 11 karri 11 (post mine rehab)       2014  11.164864     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 2 X39041       X39047 karri 11 karri 11 (post mine rehab)       2014  11.919369     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 3 X39041       X39051 karri 11 karri 11 (post mine rehab)       2014  11.630619     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 4 X39041       X39055 karri 11 karri 11 (post mine rehab)       2014  10.246344     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 5 X39041       X39059 karri 11 karri 11 (post mine rehab)       2014  12.053126     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-# 6 X39041       X39063 karri 11 karri 11 (post mine rehab)       2014   8.714487     2      Jaccard ASV (with Tree) Alcoa        no Jaccard\nASV-level
-
-head(df_ecogeocor)
-# samp compare_with samp_type compare_with_type  dist_eco  dist_geo group similarity       tax_level study dist_measure            facet_x similarity_corr dist_eco_corr
-# 2  X39041       X39043         2               Ref 0.8883514   73.7641  2 yr  11.164864 ASV (with Tree) Alcoa      Jaccard Jaccard\nASV-level       12.286528     0.8771347
-# 4  X39041       X39047         2               Ref 0.8808063 3927.1052  2 yr  11.919369 ASV (with Tree) Alcoa      Jaccard Jaccard\nASV-level       12.971661     0.8702834
-# 6  X39041       X39051         2               Ref 0.8836938 2797.7893  2 yr  11.630619 ASV (with Tree) Alcoa      Jaccard Jaccard\nASV-level       12.742994     0.8725701
-# 8  X39041       X39055         2               Ref 0.8975366 2264.7422  2 yr  10.246344 ASV (with Tree) Alcoa      Jaccard Jaccard\nASV-level       11.375629     0.8862437
-# 10 X39041       X39059         2               Ref 0.8794687 9779.8129  2 yr  12.053126 ASV (with Tree) Alcoa      Jaccard Jaccard\nASV-level       12.265989     0.8773401
-# 12 X39041       X39063         2               Ref 0.9128551 8736.8677  2 yr   8.714487 ASV (with Tree) Alcoa      Jaccard Jaccard\nASV-level        9.141757     0.9085824
-
-# confirm these refer to the same sites and comparison sites
-identical( paste0(df_out$samp,"_",df_out$compare_with) , paste0(df_ecogeocor$samp,"_",df_ecogeocor$compare_with) ) # TRUE
-dim(df_out) # 630  12
-
-df_new <- df_out
-df_new$similarity <- df_ecogeocor$similarity_corr
-df_new$corrected <- "yes"
-
-head(df_new)
-# samp compare_with     site             site_full_desc year_rehab similarity group dist_measure       tax_level study corrected            facet_x
-# 1 X39041       X39043 karri 11 karri 11 (post mine rehab)       2014  12.286528     2      Jaccard ASV (with Tree) Alcoa       yes Jaccard\nASV-level
-# 2 X39041       X39047 karri 11 karri 11 (post mine rehab)       2014  12.971661     2      Jaccard ASV (with Tree) Alcoa       yes Jaccard\nASV-level
-# 3 X39041       X39051 karri 11 karri 11 (post mine rehab)       2014  12.742994     2      Jaccard ASV (with Tree) Alcoa       yes Jaccard\nASV-level
-# 4 X39041       X39055 karri 11 karri 11 (post mine rehab)       2014  11.375629     2      Jaccard ASV (with Tree) Alcoa       yes Jaccard\nASV-level
-# 5 X39041       X39059 karri 11 karri 11 (post mine rehab)       2014  12.265989     2      Jaccard ASV (with Tree) Alcoa       yes Jaccard\nASV-level
-# 6 X39041       X39063 karri 11 karri 11 (post mine rehab)       2014   9.141757     2      Jaccard ASV (with Tree) Alcoa       yes Jaccard\nASV-level
-
-unique(df_new$group)
-# [1] 2   Ref 8   25  29  14  17
-
-
-
-table(df_new$group)
-# 2   8  14  17  25  29 Ref 
-# 54  54  54  54  54  54 306 
-
-
-# only make this once
-#df_results <- list()
-length(df_results) #
-names(df_results)
-
-df_results[["Alcoa-Jaccard-ASV-withTree-SAcorrected"]] <- df_new
-#df_out <- df_results[[1]]
-
-
-p <- ggplot(data=df_new, aes(x=group, similarity)) + ggtitle("Jaccard Similarity\nSA-corrected") + #x=group
-  geom_boxplot(outlier.shape = NA)+
-  #geom_point() +
-  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
-  #geom_hline(yintercept = 70, color="red") +
-  theme_bw() +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()) +
-  labs(x = NULL, y = "Similarity to Remnants (%)")
-p
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Jaccard-Similarity--Alcoa-Site-with-SA-correction.tiff"), width = 10, height = 10, units = "cm", dpi = 600, compression = "lzw", type = "cairo")
-
-
-
-
-## Kruskal-Wallis multiple comparison test 
-## with post-hoc Dunn test
-
-str(df_new)
-# 'data.frame':	630 obs. of  12 variables:
-
-
-df_new$group
-
-
-# Kruskal-Wallis test
-kt <- kruskal.test( similarity ~ group, df_new) # Kruskal Wallis test
-kt
-# Kruskal-Wallis rank sum test
-# data:  distance by group
-# Kruskal-Wallis chi-squared = 239.82, df = 6, p-value < 2.2e-16
-
-
-# library(FSA); packageVersion("FSA") # '0.8.30'
-# library(rcompanion); packageVersion("rcompanion") # '2.3.25'
-
-## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
-
-unique( df_new$group ) # 2   Ref 8   25  29  14  17 
-
-
-pt <- dunnTest( similarity ~ group, data = df_out,
-                method = "bonferroni" )
-pt
-
-pt$dtres
-pt <- pt$res
-pt
-
-cldList(comparison = pt$Comparison,
-        p.value    = pt$P.adj,
-        threshold  = 0.05)
-
-sig <- cldList(comparison = pt$Comparison,
-               p.value    = pt$P.adj,
-               threshold  = 0.05)
-
-str(sig)
-
-unique(sig$Group) #  "14"  "17"  "2"   "25"  "29"  "8"   "Ref"
-
-sig$Group <- factor( sig$Group, levels=c("2","8","14","17","25","29","Ref"),
-                     ordered=TRUE )
-
-sig[ order(sig$Group), ]
-# Group Letter MonoLetter
-# 3     2      d         d 
-# 6     8     bd       b d 
-# 1    14     ab      ab   
-# 2    17     ac      a c  
-# 4    25     ac      a c  
-# 5    29     ce        c e
-# 7   Ref      e          e
-
-sig <- sig[ order(sig$Group), ]
-
-levels(sig$Group) #  "2"   "8"   "14"  "17"  "25"  "29"  "Ref"
-
-## store annotations for later facet_grid ggplot
-names(df_new)
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"          "dist_measure"   "tax_level"     
-# [10] "study"          "corrected"      "facet_x"  
-
-anno <- data.frame(group=sig$Group,
-                   sig_letter = sig$Letter,
-                   similarity= c(20,22,25,30,31,35,40),
-                   dist_measure = rep( "Jaccard", times = dim(sig)[1]),
-                   tax_level  = rep( "ASV (with Tree)", times = dim(sig)[1]),
-                   study  = rep( "Alcoa", times = dim(sig)[1]),
-                   corrected = rep( "yes" , times = dim(sig)[1]),
-                   facet_x  = rep( "Jaccard\nASV-level", times = dim(sig)[1])
-)
-
-# only make this once
-#df_anno <- list()
-length(df_anno) # 0
-names(df_anno)
-
-df_anno[["Alcoa-Jaccard-ASV-withTree-SAcorrected"]] <- anno
-
-
-#-------------------------
 
 #### Investigating spatial auto-correlation -- Iluka-Eneabba -- Bray-Curtis 
 #-------------------------
@@ -25120,8 +26472,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco, colour = factor(group) )
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ILUKA-A.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ILUKA-a.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 ## for each rehab age determine if there is excess spatial auto-correlation??
@@ -25260,8 +26612,8 @@ p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,colo
   guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA))) +
   labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Bray-Curtis)\nRehab vs. Ref samples")
 p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-ILUKA-B.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-ILUKA-b.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -25293,8 +26645,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(gro
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ILUKA-SACORRECTED-C.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(c)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-ILUKA-SACORRECTED-c.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -25480,572 +26832,6 @@ df_anno[["Iluka-Eneabba-Bray-ASV-withTree-SAcorrected"]] <- anno
 
 #-------------------------
 
-#### Investigating spatial auto-correlation -- Iluka-Eneabba -- Jaccard
-#-------------------------
-
-phy_in <- phy.iluka_eneabba.withTree
-min(taxa_sums(phy_in)) # 1
-sum(sample_sums(phy_in)) # 2155211
-
-# rarefy #1
-seed <- 123
-r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
-                           rngseed = seed, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
-min(taxa_sums(r1.ps)) # 1
-sample_sums(r1.ps) # all 10142
-ntaxa(r1.ps) # 27115
-sum(sample_sums(r1.ps)) # 263692
-
-r1.ps
-# phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 27115 taxa and 26 samples ]
-# sample_data() Sample Data:       [ 26 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 27115 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 27115 tips and 27114 internal nodes ]
-
-
-str(r1.ps@sam_data)
-names(sample_data(r1.ps))
-
-r1.ps@sam_data$group <- r1.ps@sam_data$year.of.rehab.or.ref
-unique(r1.ps@sam_data$group) # "REF"  "1989" "1995" "1981" "2012" "2009" "2004" "2000"
-
-r1.ps@sam_data$group <- factor(r1.ps@sam_data$group,
-                               levels = c("2012","2009","2004","2000","1995","1989","1981","REF"),
-                               labels = c("7", "10", "15", "19", "24", "30", "38", "Ref"), ordered=TRUE)
-# Iluka-Eneabba (sampled in 2019; rehab 7-38 yr old)
-
-
-
-names(df_results)
-
-df_out <- df_results[[ "Iluka-Eneabba-Jaccard-ASV-withTree" ]]
-
-
-names(r1.ps@sam_data) # includes ...
-# [1] "Sample_ID"                                             "NCBI_Submission"                                      
-# [3] "NCBI_Sample_Accession"                                 "Organism"                                             
-# [5] "Tax_ID"                                                "SampleName_depth"                                     
-# [7] "NCBI_BioProject"                                       "Date_sampled..YYYY.MM.DD."                            
-# [9] "Time_sampled..hh.mm."                                  "Latitude..decimal.degrees."                           
-# [11] "Longitude..decimal.degrees."                
-
-r1.ps@sam_data$Latitude..decimal.degrees.
-r1.ps@sam_data$Longitude..decimal.degrees.
-
-head(r1.ps@otu_table)
-otu_tab <- t( as(r1.ps@otu_table, "matrix"))
-
-dist.jacc <- vegan::vegdist(x = otu_tab, method = "jaccard", binary = TRUE)
-str(dist.jacc)
-dist.jacc <- as(dist.jacc, "matrix")
-
-identical(colnames(dist.jacc),rownames(dist.jacc)) # TRUE
-
-
-## determine spatial auto-correlation
-
-# data.frame containing longitude and latitude coordinates
-
-long_lats <- data.frame( xlong=r1.ps@sam_data$Longitude..decimal.degrees.,
-                         ylat =r1.ps@sam_data$Latitude..decimal.degrees.
-)
-row.names(long_lats) <- row.names(r1.ps@sam_data)
-
-# calculate matrix of pairwise distances between all points
-geo_dist.m <- geodist(long_lats, measure = "haversine")
-
-geo_dist <- as.data.frame( geo_dist.m )
-row.names(geo_dist) <- row.names(r1.ps@sam_data)
-colnames(geo_dist) <- row.names(r1.ps@sam_data)
-
-# check that colnames and row.names align
-identical(row.names(geo_dist),row.names(dist.jacc)) # TRUE
-identical(colnames(geo_dist),colnames(dist.jacc)) # TRUE
-
-identical(colnames(dist.jacc), row.names(dist.jacc)) # TRUE
-
-
-df_eco <- dist.jacc
-
-df_ecogeocor <- data.frame(samp= rep( x = colnames(df_eco), each=length( colnames(df_eco) ) ),
-                           compare_with = rep( x = colnames(df_eco), times = length(colnames(df_eco))),
-                           
-                           samp_type=NA,
-                           compare_with_type=NA,
-                           
-                           dist_eco=NA,
-                           dist_geo=NA
-)
-
-for (i in 1:dim(df_ecogeocor)[1]) {
-  #i<-1
-  this_samp <- df_ecogeocor$samp[i]
-  this_compare <- df_ecogeocor$compare_with[i]
-  sel1 <- which( row.names(r1.ps@sam_data) == this_samp)
-  df_ecogeocor$samp_type[i] <- as.character( r1.ps@sam_data$group[sel1] )
-  
-  sel2 <- which( row.names(r1.ps@sam_data) == this_compare)
-  df_ecogeocor$compare_with_type[i] <- as.character( r1.ps@sam_data$group[sel2] )
-  
-  row <- which(rownames(df_eco)==this_samp)
-  col <- which(colnames(df_eco)==this_compare)
-  df_ecogeocor$dist_eco[i] <- df_eco[row,col]
-  
-  row <- which(rownames(geo_dist)==this_samp)
-  col <- which(colnames(geo_dist)==this_compare)
-  df_ecogeocor$dist_geo[i] <- geo_dist[row,col]
-  
-  print(paste0("completed ",i))
-}
-
-dim(df_ecogeocor) #  676   6
-
-# remove remnant self-comparisons
-sel <- which(df_ecogeocor$samp==df_ecogeocor$compare_with) # qty 26
-identical( which(df_ecogeocor$samp==df_ecogeocor$compare_with), which(df_ecogeocor$dist_eco==0) ) # TRUE
-df_ecogeocor <- df_ecogeocor[-sel, ]
-dim(df_ecogeocor) # 650   6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-summary(df_ecogeocor$dist_eco)
-
-head(df_ecogeocor)
-#      samp compare_with samp_type compare_with_type  dist_eco  dist_geo
-# 2 X138408      X138410       Ref               Ref 0.8133140  146.3397
-# 3 X138408      X138412       Ref               Ref 0.8339100 4708.6686
-# 4 X138408      X138418       Ref                30 0.8577062 6069.0393
-# 5 X138408      X138424       Ref                24 0.8766965 7423.1019
-# 6 X138408      X138426       Ref                24 0.8791935 7596.8801
-# 7 X138408      X138428       Ref                38 0.8728149 9336.2228
-
-
-# consider only compare with type 'Ref' as that is focus 
-# and potential for problematic study design and analysis
-
-sel <- which(df_ecogeocor$compare_with_type=="Ref") # 225
-df_ecogeocor <- df_ecogeocor[sel, ]
-dim(df_ecogeocor) # 225   6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-
-names(df_ecogeocor)
-# [1] "samp"              "compare_with"      "samp_type"         "compare_with_type" "dist_eco"         
-# [6] "dist_geo" 
-
-
-unique(df_ecogeocor$samp_type)
-# "Ref" "30"  "24"  "38"  "7"   "10"  "15"  "19" 
-
-df_ecogeocor$group <- df_ecogeocor$samp_type
-df_ecogeocor$group <- factor(df_ecogeocor$group, 
-                             levels=c("7", "10", "15", "19", "24", "30", "38", "Ref"),
-                             labels=c("7 yr", "10 yr", "15 yr", "19 yr", "24 yr", "30 yr", "38 yr","Ref"),
-                             ordered = TRUE)
-length(levels(df_ecogeocor$group)) # 8
-
-# #library(viridis); packageVersion("viridis") # ‘0.5.1’
-# cols.group <- viridis(n=length(levels(df_ecogeocor$group)))
-# names(cols.group) <- levels(df_ecogeocor$group)
-# cols.group
-# #      7 yr       10 yr       15 yr       19 yr       24 yr       30 yr       38 yr         Ref 
-# # "#440154FF" "#46337EFF" "#365C8DFF" "#277F8EFF" "#1FA187FF" "#4AC16DFF" "#9FDA3AFF" "#FDE725FF" 
-
-cols.group <- cols.group.iluka
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "7 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "10 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "15 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "19 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "24 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "30 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "38 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.73, label = "Original data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.75)),
-    legend.text = element_text(size=rel(0.6))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-ILUKA-A.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-## for each rehab age determine if there is excess spatial auto-correlation??
-## expect increasing eco-distance with increasing geo-distance
-## if this occurs, does it occur at a rate greater 
-
-( reveg_groups <- levels(df_ecogeocor$group) )
-# "7 yr"  "10 yr" "15 yr" "19 yr" "24 yr" "30 yr" "38 yr" "Ref"  
-
-
-dim(df_ecogeocor) # 225   7
-dim(df_out)       # 225   10
-
-head(df_ecogeocor)
-#       samp compare_with samp_type compare_with_type  dist_eco  dist_geo group
-# 2  X138408      X138410       Ref               Ref 0.8133140  146.3397   Ref
-# 3  X138408      X138412       Ref               Ref 0.8339100 4708.6686   Ref
-# 8  X138408      X138430       Ref               Ref 0.8401989 9736.9107   Ref
-# 9  X138408      X138432       Ref               Ref 0.8531169 9129.7606   Ref
-# 12 X138408      X138438       Ref               Ref 0.8660997 9220.6055   Ref
-# 13 X138408      X138444       Ref               Ref 0.8294949 3732.5476   Ref
-
-head(df_out)
-#      samp compare_with year_rehab similarity group dist_measure       tax_level         study corrected            facet_x
-# 2 X138408      X138410        REF   18.66860   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 3 X138408      X138412        REF   16.60900   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 4 X138408      X138430        REF   15.98011   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 5 X138408      X138432        REF   14.68831   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 6 X138408      X138438        REF   13.39003   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 7 X138408      X138444        REF   17.05051   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-
-identical(df_ecogeocor$samp,df_out$samp) # TRUE
-identical(df_ecogeocor$compare_with,df_out$compare_with) # TRUE
-
-
-df_ecogeocor$similarity <- df_out$similarity
-df_ecogeocor$tax_level <- df_out$tax_level
-df_ecogeocor$study <- df_out$study
-df_ecogeocor$dist_measure <- df_out$dist_measure
-df_ecogeocor$facet_x <- df_out$facet_x
-df_ecogeocor$similarity_corr <- NA
-df_ecogeocor$dist_eco_corr <- NA
-
-
-preds.temp <- data.frame(dist_geo = sort( unique(df_ecogeocor$dist_geo)))
-diff_models <- list()
-
-
-for (i in 1:(length(reveg_groups)-1)) {
-  #i<-1
-  this_group <- reveg_groups[i]
-  
-  x <- df_ecogeocor %>% filter(group == reveg_groups[i])
-  x_ref <- df_ecogeocor %>% filter(group == "Ref")
-  #dim(x) # 54 14
-  #dim(x_ref) # 306  14
-  # mean centre eco-distances
-  x$dist_eco_mc <- x$dist_eco - mean(x$dist_eco)
-  #plot(x$dist_geo,x$dist_eco_mc)
-  x_ref$dist_eco_mc <- x_ref$dist_eco - mean(x_ref$dist_eco)
-  #plot(x_ref$dist_geo,x_ref$dist_eco_mc)
-  
-  #model each spatial trend
-  m <- lm(data=x, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  m_ref <- lm(data=x_ref, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  preds <- preds.temp
-  # # limit predictions to max dist_geo
-  # sel <- which(preds$dist_geo <= max(x$dist_geo))
-  # limit predictions to extent of dist_geo
-  sel <- which(preds$dist_geo >= min(x$dist_geo) & preds$dist_geo <= max(x$dist_geo))
-  
-  preds <- as.data.frame( preds[sel, ] )
-  names(preds)[1] <- "dist_geo" # need to rename field; it is lost in previous step
-  preds$m <- predict(m, newdata = preds)
-  preds$m_ref <- predict(m_ref, newdata = preds)
-  #plot(preds$dist_geo,preds$m,col="red")
-  #points(preds$dist_geo,preds$m_ref,col="green")
-  preds$diff <- preds$m - preds$m_ref
-  preds$group <- this_group
-  #points(preds$dist_geo,preds$diff,col="orange")
-  plot(preds$dist_geo,preds$diff,col="orange", main = paste0("Diff Reveg age: ",this_group))
-  # apply correction to similarity
-  sel.df <- which(df_ecogeocor$group == this_group)
-  for (j in 1:length(sel.df)) {
-    #j<-1
-    sel.pred <- which(preds$dist_geo == df_ecogeocor$dist_geo[ sel.df[j] ])
-    this_diff_dist_eco <- preds$diff[sel.pred]
-    # similarity = 100*(1 - distance)
-    # corrected similarity = 100*[1 -  (distance - distance-correction)]
-    df_ecogeocor$similarity[ sel.df[j] ] # 13.10838
-    df_ecogeocor$similarity_corr[ sel.df[j] ] <- 100*(1 - (df_ecogeocor$dist_eco[ sel.df[j] ] - this_diff_dist_eco))
-    df_ecogeocor$dist_eco_corr[ sel.df[j] ] <- 1 - (1/100)*df_ecogeocor$similarity_corr[ sel.df[j] ]
-  }
-  plot(df_ecogeocor$similarity[ sel.df ], df_ecogeocor$similarity_corr[ sel.df ], main = paste0("Group: ",this_group))
-  diff_models[[this_group]] <- preds
-  print(paste0("completed ",i))
-}
-
-## but note there will be no 'corrected' values for the "Ref" samples - so just use previous values 
-sel <- which(df_ecogeocor$group == "Ref")
-df_ecogeocor$similarity_corr[sel] # all NAs
-df_ecogeocor$dist_eco_corr[sel] # all NAs
-df_ecogeocor$similarity_corr[sel] <- df_ecogeocor$similarity[sel]
-df_ecogeocor$dist_eco_corr[sel]   <- df_ecogeocor$dist_eco[sel]
-
-
-## plot modelled data for excess spatial auto-correlation 
-
-names(diff_models) # "7 yr"  "10 yr" "15 yr" "19 yr" "24 yr" "30 yr" "38 yr"
-
-pdata <- diff_models[[1]]
-for (i in 2:length(diff_models)) {
-  pdata <- rbind(pdata,diff_models[[i]])
-}
-dim(pdata) # 1118    5
-names(pdata) # "dist_geo" "m"        "m_ref"    "diff"     "group"
-unique(pdata$group) # "7 yr"  "10 yr" "15 yr" "19 yr" "24 yr" "30 yr" "38 yr"
-pdata$group <- factor(pdata$group, levels=c("7 yr",  "10 yr", "15 yr", "19 yr", "24 yr", "30 yr", "38 yr"),
-                      ordered=TRUE)
-
-p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,color=factor(group)
-  #geom_point( alpha = 0.6) +
-  #geom_point() +# pdata %>% filter(group == "3 yr"),aes(x=dist_geo,y=diff)) +
-  geom_line(size=1) +
-  geom_hline(yintercept = 0, size=0.5, linetype="dashed", colour="grey") +
-  theme_bw() +
-  scale_color_manual(values=cols.group[-length(cols.group)]) +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.6)),
-    legend.text = element_text(size=rel(0.56))
-  ) +
-  #ylim(0,0.2) +
-  guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA))) +
-  labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Jaccard)\nRehab vs. Ref samples")
-p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Jaccard-ILUKA-B.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-## plot corrected distributions ...
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "7 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "10 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "15 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "19 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "24 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "30 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "38 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.73, label = "Corrected data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.75)),
-    legend.text = element_text(size=rel(0.6))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA))) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-ILUKA-SACORRECTED-C.tiff"), width = 8, height = 10, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-names(df_results)
-names(df_results[[1]])
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"         
-# [8] "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"
-
-names(df_ecogeocor)
-
-## make names of df_ecogeocor compatible with df_out
-head(df_out)
-#      samp compare_with year_rehab similarity group dist_measure       tax_level         study corrected            facet_x
-# 2 X138408      X138410        REF   18.66860   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 3 X138408      X138412        REF   16.60900   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 4 X138408      X138430        REF   15.98011   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 5 X138408      X138432        REF   14.68831   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 6 X138408      X138438        REF   13.39003   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-# 7 X138408      X138444        REF   17.05051   Ref      Jaccard ASV (with tree) Iluka-Eneabba        no Jaccard\nASV-level
-
-head(df_ecogeocor)
-# samp compare_with samp_type compare_with_type  dist_eco  dist_geo group similarity       tax_level         study dist_measure            facet_x
-# 2  X138408      X138410       Ref               Ref 0.8133140  146.3397   Ref   18.66860 ASV (with tree) Iluka-Eneabba      Jaccard Jaccard\nASV-level
-# 3  X138408      X138412       Ref               Ref 0.8339100 4708.6686   Ref   16.60900 ASV (with tree) Iluka-Eneabba      Jaccard Jaccard\nASV-level
-# 8  X138408      X138430       Ref               Ref 0.8401989 9736.9107   Ref   15.98011 ASV (with tree) Iluka-Eneabba      Jaccard Jaccard\nASV-level
-# 9  X138408      X138432       Ref               Ref 0.8531169 9129.7606   Ref   14.68831 ASV (with tree) Iluka-Eneabba      Jaccard Jaccard\nASV-level
-# 12 X138408      X138438       Ref               Ref 0.8660997 9220.6055   Ref   13.39003 ASV (with tree) Iluka-Eneabba      Jaccard Jaccard\nASV-level
-# 13 X138408      X138444       Ref               Ref 0.8294949 3732.5476   Ref   17.05051 ASV (with tree) Iluka-Eneabba      Jaccard Jaccard\nASV-level
-# similarity_corr dist_eco_corr
-# 2         18.66860     0.8133140
-# 3         16.60900     0.8339100
-# 8         15.98011     0.8401989
-# 9         14.68831     0.8531169
-# 12        13.39003     0.8660997
-# 13        17.05051     0.8294949
-
-# confirm these refer to the same sites and comparison sites
-identical( paste0(df_out$samp,"_",df_out$compare_with) , paste0(df_ecogeocor$samp,"_",df_ecogeocor$compare_with) ) # TRUE
-dim(df_out) # 225  10
-
-df_new <- df_out
-df_new$similarity <- df_ecogeocor$similarity_corr
-df_new$corrected <- "yes"
-
-head(df_new)
-#      samp compare_with year_rehab similarity group dist_measure       tax_level         study corrected            facet_x
-# 2 X138408      X138410        REF   18.66860   Ref      Jaccard ASV (with tree) Iluka-Eneabba       yes Jaccard\nASV-level
-# 3 X138408      X138412        REF   16.60900   Ref      Jaccard ASV (with tree) Iluka-Eneabba       yes Jaccard\nASV-level
-# 4 X138408      X138430        REF   15.98011   Ref      Jaccard ASV (with tree) Iluka-Eneabba       yes Jaccard\nASV-level
-# 5 X138408      X138432        REF   14.68831   Ref      Jaccard ASV (with tree) Iluka-Eneabba       yes Jaccard\nASV-level
-# 6 X138408      X138438        REF   13.39003   Ref      Jaccard ASV (with tree) Iluka-Eneabba       yes Jaccard\nASV-level
-# 7 X138408      X138444        REF   17.05051   Ref      Jaccard ASV (with tree) Iluka-Eneabba       yes Jaccard\nASV-level
-
-unique(df_new$group)
-# [1] Ref 30  24  38  7   10  15  19 
-# Levels: 7 < 10 < 15 < 19 < 24 < 30 < 38 < Ref
-
-# df_new$group <- factor(df_new$group, levels=c("7", "10", "15", "19", "24", "30", "38", "Ref"), ordered=TRUE)
-# # Iluka-Eneabba (sampled in 2019; rehab 7-38 yr old)
-
-
-table(df_new$group)
-# 7  10  15  19  24  30  38 Ref 
-# 18  18  27  18  27  18  27  72 
-
-
-# only make this once
-#df_results <- list()
-length(df_results) #
-names(df_results)
-
-df_results[["Iluka-Eneabba-Jaccard-ASV-withTree-SAcorrected"]] <- df_new
-#df_out <- df_results[[1]]
-
-
-p <- ggplot(data=df_new, aes(x=group, similarity)) + ggtitle("Jaccard Similarity\nSA-corrected") + #x=group
-  geom_boxplot(outlier.shape = NA)+
-  #geom_point() +
-  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
-  #geom_hline(yintercept = 70, color="red") +
-  theme_bw() +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()) +
-  labs(x = NULL, y = "Similarity to Remnants (%)")
-p
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Jaccard-Similarity--Iluka-Site-with-SA-correction.tiff"), width = 10, height = 10, units = "cm", dpi = 600, compression = "lzw", type = "cairo")
-
-
-
-
-## Kruskal-Wallis multiple comparison test 
-## with post-hoc Dunn test
-
-str(df_new)
-# 'data.frame':	225 obs. of  10 variables:
-
-
-df_new$group
-
-
-# Kruskal-Wallis test
- 
-kt <- kruskal.test( similarity ~ group, df_new) # Kruskal Wallis test
-kt
-# Kruskal-Wallis rank sum test
-# data:  distance by group
-# Kruskal-Wallis chi-squared = 155.71, df = 7, p-value < 2.2e-16
-
-
-# library(FSA); packageVersion("FSA") # '0.8.30'
-# library(rcompanion); packageVersion("rcompanion") # '2.3.25'
-
-## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
-
-unique( df_new$group ) 
-# Ref 30  24  38  7   10  15  19 
-# Levels: 7 < 10 < 15 < 19 < 24 < 30 < 38 < Ref
-
-
-# post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
-temp <- df_new
-temp$group <- as.character(temp$group)
-temp$group <- factor(temp$group, levels = c("7","10","15","19","24","30","38","Ref"),
-                     labels = c("7","ten","15","19","24","thirty","38","Ref"),ordered = TRUE)
-
-
- 
-pt <- dunnTest( similarity ~ group, data = temp,
-                method = "bonferroni" )
-pt
-
-pt$dtres
-pt <- pt$res
-pt
-
-cldList(comparison = pt$Comparison,
-        p.value    = pt$P.adj,
-        threshold  = 0.05)
-
-sig <- cldList(comparison = pt$Comparison,
-               p.value    = pt$P.adj,
-               threshold  = 0.05)
-
-str(sig)
-# 'data.frame':	8 obs. of  3 variables:
-
-unique(sig$Group) # "15"     "19"     "24"     "38"     "7"      "Ref"    "ten"    "thirty"
-
-sig$Group <- factor( sig$Group, levels=c("7","ten","15","19","24","thirty","38","Ref"),
-                     labels = c("7","10","15","19","24","30","38","Ref"),
-                     ordered=TRUE )
-
-sig[ order(sig$Group), ]
-# Group Letter MonoLetter
-# 5     7     ab       ab  
-# 7    10      b        b  
-# 1    15     ab       ab  
-# 2    19      a       a   
-# 3    24     ab       ab  
-# 8    30     ad       a  d
-# 4    38     cd         cd
-# 6   Ref      c         c 
-
-sig <- sig[ order(sig$Group), ]
-
-levels(sig$Group) # "7"   "10"  "15"  "19"  "24"  "30"  "38"  "Ref"
-
-## store annotations for later facet_grid ggplot
-names(df_new)
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"          "dist_measure"   "tax_level"     
-# [10] "study"          "corrected"      "facet_x"  
-
-anno <- data.frame(group=sig$Group,
-                   sig_letter = sig$Letter,
-                   similarity= c(18,15,18,20,21,22,24,25),
-                   dist_measure = rep( "Jaccard", times = dim(sig)[1]),
-                   tax_level  = rep( "ASV (with Tree)", times = dim(sig)[1]),
-                   study  = rep( "Iluka-Eneabba", times = dim(sig)[1]),
-                   corrected = rep( "yes" , times = dim(sig)[1]),
-                   facet_x  = rep( "Jaccard\nASV-level", times = dim(sig)[1])
-)
-
-# only make this once
-#df_anno <- list()
-length(df_anno) # 0
-names(df_anno)
-
-df_anno[["Iluka-Eneabba-Jaccard-ASV-withTree-SAcorrected"]] <- anno
-
-
-#-------------------------
 
 #### Investigating spatial auto-correlation -- South32 -- Bray-Curtis 
 #-------------------------
@@ -26250,8 +27036,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco, colour = factor(group) )
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-A.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-a.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 ## for each rehab age determine if there is excess spatial auto-correlation??
@@ -26260,6 +27046,8 @@ dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-
 
 ( reveg_groups <- levels(df_ecogeocor$group) )
 # "2 yr"  "8 yr"  "12 yr" "14 yr" "17 yr" "20 yr" "23 yr" "28 yr" "Ref"  
+
+
 
 
 dim(df_ecogeocor) # 144   7
@@ -26390,8 +27178,8 @@ p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,colo
   guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
   labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Bray-Curtis)\nRehab vs. Ref samples")
 p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-B.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-b.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -26424,8 +27212,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(gro
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-SACORRECTED-C.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(c)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-SACORRECTED-c.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -26619,579 +27407,8 @@ df_anno[["South32-Bray-ASV-withTree-SAcorrected"]] <- anno
 
 #-------------------------
 
-#### Investigating spatial auto-correlation -- South32 -- Jaccard
-#-------------------------
-
-phy_in <- phy.south32.withTree
-min(taxa_sums(phy_in)) # 2
-sum(sample_sums(phy_in)) # 2049625
-
-# rarefy #1
-seed <- 123
-r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
-                           rngseed = seed, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
-min(taxa_sums(r1.ps)) # 1
-sample_sums(r1.ps) # all 54122
-ntaxa(r1.ps) #  54327
-sum(sample_sums(r1.ps)) # 1353050
-
-r1.ps
-# phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 54327 taxa and 25 samples ]
-# sample_data() Sample Data:       [ 25 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 54327 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 54327 tips and 54325 internal nodes ]
-
-
-
-str(r1.ps@sam_data)
-names(sample_data(r1.ps))
-
-r1.ps@sam_data$group <- r1.ps@sam_data$`year of rehab or ref`
-unique(r1.ps@sam_data$group) # "1996" "REF"  "2017" "2002" "2007" "1999" "2011" "2005" "1991"
-
-r1.ps@sam_data$group <- factor(r1.ps@sam_data$group,
-                               levels = c("2017","2011","2007","2005","2002","1999","1996","1991","REF"),
-                               labels = c("2","8","12","14","17","20","23","28","Ref"), ordered=TRUE)
-# South32 (sampled in 2019; rehab 2-28 yr old)
-
-
-
-names(df_results)
-
-df_out <- df_results[[ "South32-Jaccard-ASV-withTree" ]]
-
-
-names(r1.ps@sam_data) # includes ...
-# [1] "Sample_ID"                                             "NCBI_Submission"                                      
-# [3] "NCBI_Sample_Accession"                                 "Organism"                                             
-# [5] "Tax_ID"                                                "SampleName_depth"                                     
-# [7] "NCBI_BioProject"                                       "Date_sampled [YYYY-MM-DD]"                            
-# [9] "Time_sampled [hh:mm]"                                  "Latitude [decimal degrees]"                           
-# [11] "Longitude [decimal degrees]"     
-
-r1.ps@sam_data$`Latitude [decimal degrees]`
-r1.ps@sam_data$`Longitude [decimal degrees]`
-
-head(r1.ps@otu_table)
-otu_tab <- t( as(r1.ps@otu_table, "matrix"))
-
-dist.jacc <- vegan::vegdist(x = otu_tab, method = "jaccard", binary = TRUE)
-str(dist.jacc)
-dist.jacc <- as(dist.jacc, "matrix")
-
-identical(colnames(dist.jacc),rownames(dist.jacc)) # TRUE
-
-
-## determine spatial auto-correlation
-
-# data.frame containing longitude and latitude coordinates
-
-long_lats <- data.frame( xlong=r1.ps@sam_data$`Longitude [decimal degrees]`,
-                         ylat =r1.ps@sam_data$`Latitude [decimal degrees]`
-)
-row.names(long_lats) <- row.names(r1.ps@sam_data)
-
-# calculate matrix of pairwise distances between all points
-geo_dist.m <- geodist(long_lats, measure = "haversine")
-
-geo_dist <- as.data.frame( geo_dist.m )
-row.names(geo_dist) <- row.names(r1.ps@sam_data)
-colnames(geo_dist) <- row.names(r1.ps@sam_data)
-
-# check that colnames and row.names align
-identical(row.names(geo_dist),row.names(dist.jacc)) # TRUE
-identical(colnames(geo_dist),colnames(dist.jacc)) # TRUE
-
-identical(colnames(dist.jacc), row.names(dist.jacc)) # TRUE
-
-
-df_eco <- dist.jacc
-
-df_ecogeocor <- data.frame(samp= rep( x = colnames(df_eco), each=length( colnames(df_eco) ) ),
-                           compare_with = rep( x = colnames(df_eco), times = length(colnames(df_eco))),
-                           
-                           samp_type=NA,
-                           compare_with_type=NA,
-                           
-                           dist_eco=NA,
-                           dist_geo=NA
-)
-
-for (i in 1:dim(df_ecogeocor)[1]) {
-  #i<-1
-  this_samp <- df_ecogeocor$samp[i]
-  this_compare <- df_ecogeocor$compare_with[i]
-  sel1 <- which( row.names(r1.ps@sam_data) == this_samp)
-  df_ecogeocor$samp_type[i] <- as.character( r1.ps@sam_data$group[sel1] )
-  
-  sel2 <- which( row.names(r1.ps@sam_data) == this_compare)
-  df_ecogeocor$compare_with_type[i] <- as.character( r1.ps@sam_data$group[sel2] )
-  
-  row <- which(rownames(df_eco)==this_samp)
-  col <- which(colnames(df_eco)==this_compare)
-  df_ecogeocor$dist_eco[i] <- df_eco[row,col]
-  
-  row <- which(rownames(geo_dist)==this_samp)
-  col <- which(colnames(geo_dist)==this_compare)
-  df_ecogeocor$dist_geo[i] <- geo_dist[row,col]
-  
-  print(paste0("completed ",i))
-}
-
-dim(df_ecogeocor) #  625   6
-
-# remove remnant self-comparisons
-sel <- which(df_ecogeocor$samp==df_ecogeocor$compare_with) #
-identical( which(df_ecogeocor$samp==df_ecogeocor$compare_with), which(df_ecogeocor$dist_eco==0) ) # TRUE
-df_ecogeocor <- df_ecogeocor[-sel, ]
-dim(df_ecogeocor) # 600   6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-summary(df_ecogeocor$dist_eco)
-
-head(df_ecogeocor)
-#      samp compare_with samp_type compare_with_type  dist_eco  dist_geo
-# 2 X138358      X138360        23                23 0.6668722  698.9024
-# 3 X138358      X138362        23               Ref 0.7011121  991.2395
-# 4 X138358      X138364        23                 2 0.7854806 1212.3960
-# 5 X138358      X138366        23               Ref 0.7874227 1291.3074
-# 6 X138358      X138368        23                17 0.7072853 1679.4491
-# 7 X138358      X138370        23                12 0.7463683 1201.3421
-
-
-# consider only compare with type 'Ref' as that is focus 
-# and potential for problematic study design and analysis
-
-sel <- which(df_ecogeocor$compare_with_type=="Ref") # qty 144
-df_ecogeocor <- df_ecogeocor[sel, ]
-dim(df_ecogeocor) # 144  6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-
-names(df_ecogeocor)
-# [1] "samp"              "compare_with"      "samp_type"         "compare_with_type" "dist_eco"         
-# [6] "dist_geo" 
-
-
-unique(df_ecogeocor$samp_type)
-# "23"  "Ref" "2"   "17"  "12"  "20"  "8"   "14"  "28" 
-
-df_ecogeocor$group <- df_ecogeocor$samp_type
-df_ecogeocor$group <- factor(df_ecogeocor$group, 
-                             levels=c("2","8","12","14","17","20","23","28","Ref"),
-                             labels=c("2 yr","8 yr","12 yr","14 yr","17 yr","20 yr","23 yr","28 yr","Ref"),
-                             ordered = TRUE)
-length(levels(df_ecogeocor$group)) # 9
-
-# #library(viridis); packageVersion("viridis") # ‘0.5.1’
-# cols.group <- viridis(n=length(levels(df_ecogeocor$group)))
-# names(cols.group) <- levels(df_ecogeocor$group)
-# cols.group
-# # 2 yr        8 yr       12 yr       14 yr       17 yr       20 yr       23 yr       28 yr         Ref 
-# # "#440154FF" "#472D7BFF" "#3B528BFF" "#2C728EFF" "#21908CFF" "#27AD81FF" "#5DC863FF" "#AADC32FF" "#FDE725FF" 
-
-cols.group <- cols.group.south32
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "2 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "8 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "12 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "14 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "17 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "20 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "23 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "28 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.66, label = "Original data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.75)),
-    legend.text = element_text(size=rel(0.65))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-SOUTH32-A.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-## for each rehab age determine if there is excess spatial auto-correlation??
-## expect increasing eco-distance with increasing geo-distance
-## if this occurs, does it occur at a rate greater 
-
-( reveg_groups <- levels(df_ecogeocor$group) )
-# "2 yr"  "8 yr"  "12 yr" "14 yr" "17 yr" "20 yr" "23 yr" "28 yr" "Ref"  
-
-
-dim(df_ecogeocor) # 144   7
-dim(df_out)       # 144   10
-
-head(df_ecogeocor)
-#       samp compare_with samp_type compare_with_type  dist_eco  dist_geo group
-# 3  X138358      X138362        23               Ref 0.7011121  991.2395 23 yr
-# 5  X138358      X138366        23               Ref 0.7874227 1291.3074 23 yr
-# 9  X138358      X138374        23               Ref 0.7614333 2447.0999 23 yr
-# 10 X138358      X138376        23               Ref 0.8451676 2692.4727 23 yr
-# 11 X138358      X138378        23               Ref 0.8135325 4442.1090 23 yr
-# 24 X138358      X138404        23               Ref 0.7958911 5697.4216 23 yr
-
-head(df_out)
-#      samp compare_with year_rehab similarity group dist_measure       tax_level   study corrected            facet_x
-# 1 X138358      X138362       1996   29.88879    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 2 X138358      X138366       1996   21.25773    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 3 X138358      X138374       1996   23.85667    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 4 X138358      X138376       1996   15.48324    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 5 X138358      X138378       1996   18.64675    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 6 X138358      X138404       1996   20.41089    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-
-identical(df_ecogeocor$samp,df_out$samp) # TRUE
-identical(df_ecogeocor$compare_with,df_out$compare_with) # TRUE
-
-
-df_ecogeocor$similarity <- df_out$similarity
-df_ecogeocor$tax_level <- df_out$tax_level
-df_ecogeocor$study <- df_out$study
-df_ecogeocor$dist_measure <- df_out$dist_measure
-df_ecogeocor$facet_x <- df_out$facet_x
-df_ecogeocor$similarity_corr <- NA
-df_ecogeocor$dist_eco_corr <- NA
-
-
-preds.temp <- data.frame(dist_geo = sort( unique(df_ecogeocor$dist_geo)))
-diff_models <- list()
-
-
-for (i in 1:(length(reveg_groups)-1)) {
-  #i<-1
-  this_group <- reveg_groups[i]
-  
-  x <- df_ecogeocor %>% filter(group == reveg_groups[i])
-  x_ref <- df_ecogeocor %>% filter(group == "Ref")
-  #dim(x) # 54 14
-  #dim(x_ref) # 306  14
-  # mean centre eco-distances
-  x$dist_eco_mc <- x$dist_eco - mean(x$dist_eco)
-  #plot(x$dist_geo,x$dist_eco_mc)
-  x_ref$dist_eco_mc <- x_ref$dist_eco - mean(x_ref$dist_eco)
-  #plot(x_ref$dist_geo,x_ref$dist_eco_mc)
-  
-  #model each spatial trend
-  m <- lm(data=x, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  m_ref <- lm(data=x_ref, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  preds <- preds.temp
-  # # limit predictions to max dist_geo
-  # sel <- which(preds$dist_geo <= max(x$dist_geo))
-  # limit predictions to extent of dist_geo
-  sel <- which(preds$dist_geo >= min(x$dist_geo) & preds$dist_geo <= max(x$dist_geo))
-  
-  preds <- as.data.frame( preds[sel, ] )
-  names(preds)[1] <- "dist_geo" # need to rename field; it is lost in previous step
-  preds$m <- predict(m, newdata = preds)
-  preds$m_ref <- predict(m_ref, newdata = preds)
-  #plot(preds$dist_geo,preds$m,col="red")
-  #points(preds$dist_geo,preds$m_ref,col="green")
-  preds$diff <- preds$m - preds$m_ref
-  preds$group <- this_group
-  #points(preds$dist_geo,preds$diff,col="orange")
-  plot(preds$dist_geo,preds$diff,col="orange", main = paste0("Diff Reveg age: ",this_group))
-  # apply correction to similarity
-  sel.df <- which(df_ecogeocor$group == this_group)
-  for (j in 1:length(sel.df)) {
-    #j<-1
-    sel.pred <- which(preds$dist_geo == df_ecogeocor$dist_geo[ sel.df[j] ])
-    this_diff_dist_eco <- preds$diff[sel.pred]
-    # similarity = 100*(1 - distance)
-    # corrected similarity = 100*[1 -  (distance - distance-correction)]
-    df_ecogeocor$similarity[ sel.df[j] ] # 13.10838
-    df_ecogeocor$similarity_corr[ sel.df[j] ] <- 100*(1 - (df_ecogeocor$dist_eco[ sel.df[j] ] - this_diff_dist_eco))
-    df_ecogeocor$dist_eco_corr[ sel.df[j] ] <- 1 - (1/100)*df_ecogeocor$similarity_corr[ sel.df[j] ]
-  }
-  plot(df_ecogeocor$similarity[ sel.df ], df_ecogeocor$similarity_corr[ sel.df ], main = paste0("Group: ",this_group))
-  diff_models[[this_group]] <- preds
-  print(paste0("completed ",i))
-}
-
-## but note there will be no 'corrected' values for the "Ref" samples - so just use previous values 
-sel <- which(df_ecogeocor$group == "Ref")
-df_ecogeocor$similarity_corr[sel] # all NAs
-df_ecogeocor$dist_eco_corr[sel] # all NAs
-df_ecogeocor$similarity_corr[sel] <- df_ecogeocor$similarity[sel]
-df_ecogeocor$dist_eco_corr[sel]   <- df_ecogeocor$dist_eco[sel]
-
-
-## plot modelled data for excess spatial auto-correlation 
-
-names(diff_models) # "2 yr"  "8 yr"  "12 yr" "14 yr" "17 yr" "20 yr" "23 yr" "28 yr"
-
-pdata <- diff_models[[1]]
-for (i in 2:length(diff_models)) {
-  pdata <- rbind(pdata,diff_models[[i]])
-}
-dim(pdata) # 937    5
-names(pdata) # "dist_geo" "m"        "m_ref"    "diff"     "group"
-unique(pdata$group) # "2 yr"  "8 yr"  "12 yr" "14 yr" "17 yr" "20 yr" "23 yr" "28 yr"
-pdata$group <- factor(pdata$group, levels=c("2 yr",  "8 yr",  "12 yr", "14 yr", "17 yr", "20 yr", "23 yr", "28 yr"),
-                      ordered=TRUE)
-
-p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,color=factor(group)
-  #geom_point( alpha = 0.6) +
-  #geom_point() +# pdata %>% filter(group == "3 yr"),aes(x=dist_geo,y=diff)) +
-  geom_line(size=1) +
-  geom_hline(yintercept = 0, size=0.5, linetype="dashed", colour="grey") +
-  theme_bw() +
-  scale_color_manual(values=cols.group[-length(cols.group)]) +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.7)),
-    legend.text = element_text(size=rel(0.65))
-  ) +
-  #ylim(0,0.2) +
-  guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
-  labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Jaccard)\nRehab vs. Ref samples")
-p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Jaccard-SOUTH32-B.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-## plot corrected distributions ...
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "2 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "8 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "12 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "14 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "17 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "20 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "23 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "28 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.66, label = "Corrected data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.75)),
-    legend.text = element_text(size=rel(0.65))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-SOUTH32-SACORRECTED-C.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-names(df_results)
-names(df_results[[1]])
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"         
-# [8] "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"
-
-names(df_ecogeocor)
-
-## make names of df_ecogeocor compatible with df_out
-head(df_out)
-# samp compare_with year_rehab similarity group dist_measure       tax_level   study corrected            facet_x
-# 1 X138358      X138362       1996   29.88879    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 2 X138358      X138366       1996   21.25773    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 3 X138358      X138374       1996   23.85667    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 4 X138358      X138376       1996   15.48324    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 5 X138358      X138378       1996   18.64675    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-# 6 X138358      X138404       1996   20.41089    23      Jaccard ASV (with Tree) South32        no Jaccard\nASV-level
-
-head(df_ecogeocor)
-# samp compare_with samp_type compare_with_type  dist_eco  dist_geo group similarity       tax_level   study dist_measure            facet_x similarity_corr
-# 3  X138358      X138362        23               Ref 0.7011121  991.2395 23 yr   29.88879 ASV (with Tree) South32      Jaccard Jaccard\nASV-level        30.38463
-# 5  X138358      X138366        23               Ref 0.7874227 1291.3074 23 yr   21.25773 ASV (with Tree) South32      Jaccard Jaccard\nASV-level        22.15341
-# 9  X138358      X138374        23               Ref 0.7614333 2447.0999 23 yr   23.85667 ASV (with Tree) South32      Jaccard Jaccard\nASV-level        25.81715
-# 10 X138358      X138376        23               Ref 0.8451676 2692.4727 23 yr   15.48324 ASV (with Tree) South32      Jaccard Jaccard\nASV-level        17.57267
-# 11 X138358      X138378        23               Ref 0.8135325 4442.1090 23 yr   18.64675 ASV (with Tree) South32      Jaccard Jaccard\nASV-level        20.66966
-# 24 X138358      X138404        23               Ref 0.7958911 5697.4216 23 yr   20.41089 ASV (with Tree) South32      Jaccard Jaccard\nASV-level        21.32058
-# dist_eco_corr
-# 3      0.6961537
-# 5      0.7784659
-# 9      0.7418285
-# 10     0.8242733
-# 11     0.7933034
-# 24     0.7867942
-
-# confirm these refer to the same sites and comparison sites
-identical( paste0(df_out$samp,"_",df_out$compare_with) , paste0(df_ecogeocor$samp,"_",df_ecogeocor$compare_with) ) # TRUE
-dim(df_out) # 144  10
-
-df_new <- df_out
-df_new$similarity <- df_ecogeocor$similarity_corr
-df_new$corrected <- "yes"
-
-head(df_new)
-# samp compare_with year_rehab similarity group dist_measure       tax_level   study corrected            facet_x
-# 1 X138358      X138362       1996   30.38463    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 2 X138358      X138366       1996   22.15341    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 3 X138358      X138374       1996   25.81715    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 4 X138358      X138376       1996   17.57267    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 5 X138358      X138378       1996   20.66966    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 6 X138358      X138404       1996   21.32058    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-
-unique(df_new$group)
-# [1] 23  Ref 2   17  12  20  8   14  28 
-# Levels: 2 < 8 < 12 < 14 < 17 < 20 < 23 < 28 < Ref
-
-
-
-table(df_new$group)
-# 2   8  12  14  17  20  23  28 Ref 
-# 18  18   6  12  12  12  24  12  30 
-
-
-# only make this once
-#df_results <- list()
-length(df_results) #
-names(df_results)
-
-df_results[["South32-Jaccard-ASV-withTree-SAcorrected"]] <- df_new
-#df_out <- df_results[[1]]
-
-
-p <- ggplot(data=df_new, aes(x=group, similarity)) + ggtitle("Jaccard Similarity\nSA-corrected") + #x=group
-  geom_boxplot(outlier.shape = NA)+
-  #geom_point() +
-  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
-  #geom_hline(yintercept = 70, color="red") +
-  theme_bw() +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()) +
-  labs(x = NULL, y = "Similarity to Remnants (%)")
-p
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Jaccard-Similarity--South32-Site-with-SA-correction.tiff"), width = 10, height = 10, units = "cm", dpi = 600, compression = "lzw", type = "cairo")
-
-
-
-
-## Kruskal-Wallis multiple comparison test 
-## with post-hoc Dunn test
-
-str(df_new)
-# 'data.frame':	144 obs. of  10 variables:
-
-
-df_new$group
-
-
-# Kruskal-Wallis test
- 
-kt <- kruskal.test( similarity ~ group, df_new) # Kruskal Wallis test
-kt
-# Kruskal-Wallis rank sum test
-# data:  distance by group
-# Kruskal-Wallis chi-squared = 68.528, df = 8, p-value = 9.645e-12
-
-
-# library(FSA); packageVersion("FSA") # '0.8.30'
-# library(rcompanion); packageVersion("rcompanion") # '2.3.25'
-
-## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
-
-unique( df_new$group ) 
-# [1] 23  Ref 2   17  12  20  8   14  28 
-# Levels: 2 < 8 < 12 < 14 < 17 < 20 < 23 < 28 < Ref
-
-
-# post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
-temp <- df_new
-temp$group <- as.character(temp$group)
-temp$group <- factor(temp$group, levels = c("2","8","12","14","17","20","23","28","Ref"),
-                     labels = c("2","8","12","14","17","twenty","23","28","Ref"),ordered = TRUE)
-
-
- 
-pt <- dunnTest( similarity ~ group, data = temp,
-                method = "bonferroni" )
-pt
-
-pt$dtres
-pt <- pt$res
-pt
-
-cldList(comparison = pt$Comparison,
-        p.value    = pt$P.adj,
-        threshold  = 0.05)
-
-sig <- cldList(comparison = pt$Comparison,
-               p.value    = pt$P.adj,
-               threshold  = 0.05)
-
-str(sig)
-# 'data.frame':	9 obs. of  3 variables:
-
-unique(sig$Group) # "12"     "14"     "17"     "2"      "23"     "28"     "8"      "Ref"    "twenty"
-
-sig$Group <- factor( sig$Group, levels=c("2","8","12","14","17","twenty","23","28","Ref"),
-                     labels = c("2","8","12","14","17","20","23","28","Ref"),
-                     ordered=TRUE )
-
-
-sig[ order(sig$Group), ]
-# Group Letter MonoLetter
-# 4     2      a        a  
-# 7     8      a        a  
-# 1    12    abc        abc
-# 2    14     ab        ab 
-# 3    17    abc        abc
-# 9    20     bc         bc
-# 5    23     bc         bc
-# 6    28     bc         bc
-# 8   Ref      c          c
-
-sig <- sig[ order(sig$Group), ]
-
-levels(sig$Group) # "2"   "8"   "12"  "14"  "17"  "20"  "23"  "28"  "Ref"
-
-## store annotations for later facet_grid ggplot
-names(df_new)
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"          "dist_measure"   "tax_level"     
-# [10] "study"          "corrected"      "facet_x"  
-
-anno <- data.frame(group=sig$Group,
-                   sig_letter = sig$Letter,
-                   similarity= c(25,24,28,26,34,36,32,33,36),
-                   dist_measure = rep( "Jaccard", times = dim(sig)[1]),
-                   tax_level  = rep( "ASV (with Tree)", times = dim(sig)[1]),
-                   study  = rep( "South32", times = dim(sig)[1]),
-                   corrected = rep( "yes" , times = dim(sig)[1]),
-                   facet_x  = rep( "Jaccard\nASV-level", times = dim(sig)[1])
-)
-
-# only make this once
-#df_anno <- list()
-length(df_anno) # 0
-names(df_anno)
-
-df_anno[["South32-Jaccard-ASV-withTree-SAcorrected"]] <- anno
-
-
-#-------------------------
-
 
 ### NOW EXCLUDE DISTANT SITES IN SOUTH32 CASE STUDY
-
 #### Investigating spatial auto-correlation -- South32 -- Bray-Curtis -- ExcludeFarSouth
 #-------------------------
 
@@ -27201,28 +27418,60 @@ phy_in <- phy.south32.withTree
 min(taxa_sums(phy_in)) # 2
 sum(sample_sums(phy_in)) # 2049625
 
+sample_sums(phy_in)
+min(sample_sums(phy_in)) # 54122
+
+phy_in
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:          [ 54671 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 54671 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 54671 tips and 54669 internal nodes ]:
+#   taxa are rows
+
+## exclude southernmost (youngest) group and associated Ref
+
+hist(phy_in@sam_data$`Latitude [decimal degrees]`)
+sel <- which(phy_in@sam_data$`Latitude [decimal degrees]` > 32.95)
+as(phy_in@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
+#                  Sample_ID year.of.rehab.or.ref
+# X138402 102.100.100/138402                 2017
+# X138404 102.100.100/138404                  REF
+# X138406 102.100.100/138406                 2017
+
+rem_samps <- c("X138402","X138404","X138406")
+keep_samps <- which(!sample_names(phy_in) %in% rem_samps)
+# convert from indices to names
+keep_samps <- sample_names(phy_in)[keep_samps]
+keep_samps
+# [1] "X138358" "X138360" "X138362" "X138364" "X138366" "X138368" "X138370" "X138372" "X138374" "X138376" "X138378" "X138380" "X138382"
+# [14] "X138384" "X138386" "X138388" "X138390" "X138392" "X138394" "X138396" "X138398" "X138400"
+
+phy_in <- prune_samples(samples = keep_samps, x = phy_in)
+
 # rarefy #1
 seed <- 123
 r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
                            rngseed = seed, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
 min(taxa_sums(r1.ps)) # 1
 sample_sums(r1.ps) # all 54122
-ntaxa(r1.ps) #  54327
-sum(sample_sums(r1.ps)) # 1353050
+ntaxa(r1.ps) #  53404
+sum(sample_sums(r1.ps)) # 1190684
 
 r1.ps
 # phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 54327 taxa and 25 samples ]
-# sample_data() Sample Data:       [ 25 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 54327 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 54327 tips and 54325 internal nodes ]
+# otu_table()   OTU Table:          [ 53404 taxa and 22 samples ]:
+#   sample_data() Sample Data:        [ 22 samples by 139 sample variables ]:
+#   tax_table()   Taxonomy Table:     [ 53404 taxa by 6 taxonomic ranks ]:
+#   phy_tree()    Phylogenetic Tree:  [ 53404 tips and 53402 internal nodes ]:
+#   taxa are rows
 
 
 
 str(r1.ps@sam_data)
 names(sample_data(r1.ps))
 
-r1.ps@sam_data$group <- r1.ps@sam_data$`year of rehab or ref`
+r1.ps@sam_data$group <- r1.ps@sam_data$year.of.rehab.or.ref
 unique(r1.ps@sam_data$group) # "1996" "REF"  "2017" "2002" "2007" "1999" "2011" "2005" "1991"
 
 r1.ps@sam_data$group <- factor(r1.ps@sam_data$group,
@@ -27234,7 +27483,9 @@ r1.ps@sam_data$group <- factor(r1.ps@sam_data$group,
 
 names(df_results)
 
-df_out <- df_results[[ "South32-Bray-ASV-withTree" ]]
+# retrieve Bray-Curtis distances
+df_out <- df_results[["South32-Bray-ASV-withTree-exclude-southernmost"]]
+
 
 
 names(r1.ps@sam_data) # includes ...
@@ -27245,8 +27496,8 @@ names(r1.ps@sam_data) # includes ...
 # [9] "Time_sampled [hh:mm]"                                  "Latitude [decimal degrees]"                           
 # [11] "Longitude [decimal degrees]"     
 
-r1.ps@sam_data$`Latitude [decimal degrees]`
-r1.ps@sam_data$`Longitude [decimal degrees]`
+r1.ps@sam_data$Latitude..decimal.degrees.
+r1.ps@sam_data$Longitude..decimal.degrees.
 
 head(r1.ps@otu_table)
 otu_tab <- t( as(r1.ps@otu_table, "matrix"))
@@ -27262,8 +27513,8 @@ identical(colnames(dist.bray),rownames(dist.bray)) # TRUE
 
 # data.frame containing longitude and latitude coordinates
 
-long_lats <- data.frame( xlong=r1.ps@sam_data$`Longitude [decimal degrees]`,
-                         ylat =r1.ps@sam_data$`Latitude [decimal degrees]`
+long_lats <- data.frame( xlong=r1.ps@sam_data$Longitude..decimal.degrees.,
+                         ylat =r1.ps@sam_data$Latitude..decimal.degrees.
 )
 row.names(long_lats) <- row.names(r1.ps@sam_data)
 
@@ -27314,19 +27565,19 @@ for (i in 1:dim(df_ecogeocor)[1]) {
   print(paste0("completed ",i))
 }
 
-dim(df_ecogeocor) #  625   6
+dim(df_ecogeocor) #  484   6
 
 # remove remnant self-comparisons
 sel <- which(df_ecogeocor$samp==df_ecogeocor$compare_with) #
 identical( which(df_ecogeocor$samp==df_ecogeocor$compare_with), which(df_ecogeocor$dist_eco==0) ) # TRUE
 df_ecogeocor <- df_ecogeocor[-sel, ]
-dim(df_ecogeocor) # 600   6
+dim(df_ecogeocor) # 462   6
 
 plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
 summary(df_ecogeocor$dist_eco)
 
 head(df_ecogeocor)
-#      samp compare_with samp_type compare_with_type  dist_eco  dist_geo
+# samp compare_with samp_type compare_with_type  dist_eco  dist_geo
 # 2 X138358      X138360        23                23 0.5328332  698.9024
 # 3 X138358      X138362        23               Ref 0.6198404  991.2395
 # 4 X138358      X138364        23                 2 0.7639962 1212.3960
@@ -27338,73 +27589,12 @@ head(df_ecogeocor)
 # consider only compare with type 'Ref' as that is focus 
 # and potential for problematic study design and analysis
 
-sel <- which(df_ecogeocor$compare_with_type=="Ref") # qty 144
+sel <- which(df_ecogeocor$compare_with_type=="Ref") # qty 105
 df_ecogeocor <- df_ecogeocor[sel, ]
-dim(df_ecogeocor) # 144  6
+dim(df_ecogeocor) # 105  6
 
 plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
 
-
-## what is distribution of geological distance?
-hist(df_ecogeocor$dist_geo)
-hist(r1.ps@sam_data$`Latitude [decimal degrees]`, breaks = 30)
-# southern cluster is > 32.94
-sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.94) # qty 3
-row.names(r1.ps@sam_data)[sel] # "X138402" "X138404" "X138406"
-r1.ps@sam_data$Sample_ID[sel] # "102.100.100/138402" "102.100.100/138404" "102.100.100/138406"
-r1.ps@sam_data$group[sel] # 2   Ref 2  
-
-# remove these from df_ecogeocor
-names(df_ecogeocor)
-#"samp"              "compare_with"      "samp_type"         "compare_with_type" "dist_eco"          "dist_geo"   
-
-sel.rm <- which(df_ecogeocor$samp %in% c("X138402", "X138404", "X138406") | df_ecogeocor$compare_with %in% c("X138402", "X138404", "X138406")) # qty 39 rows
-df_ecogeocor[sel.rm, ]
-#        samp compare_with samp_type compare_with_type  dist_eco   dist_geo
-# 24  X138358      X138404        23               Ref 0.7496951  5697.4216
-# 49  X138360      X138404        23               Ref 0.7753224  5150.2787
-# 74  X138362      X138404       Ref               Ref 0.7110602  4892.8740
-# 99  X138364      X138404         2               Ref 0.8574517  5299.2474
-# 124 X138366      X138404       Ref               Ref 0.7860574  5278.2006
-# 149 X138368      X138404        17               Ref 0.7694838  7261.6294
-# 174 X138370      X138404        12               Ref 0.8147149  6672.6095
-# 199 X138372      X138404        23               Ref 0.7382950  6889.9139
-# 224 X138374      X138404       Ref               Ref 0.6749751  7839.1925
-# 249 X138376      X138404       Ref               Ref 0.7584346  8270.3423
-# 274 X138378      X138404       Ref               Ref 0.7436902 10025.0451
-# 299 X138380      X138404        20               Ref 0.7004545  9725.9159
-# 324 X138382      X138404         8               Ref 0.7799786  9930.3255
-# 349 X138384      X138404         8               Ref 0.7573260  9261.6138
-# 374 X138386      X138404        14               Ref 0.7897343  8844.5744
-# 399 X138388      X138404        20               Ref 0.6386867  7333.4042
-# 424 X138390      X138404        23               Ref 0.7172869  7804.4292
-# 449 X138392      X138404        17               Ref 0.6993644  6750.0638
-# 474 X138394      X138404         8               Ref 0.8073981  6691.6399
-# 499 X138396      X138404        14               Ref 0.7471638  6283.9716
-# 524 X138398      X138404        28               Ref 0.6988470  5318.3271
-# 549 X138400      X138404        28               Ref 0.6334947  5312.5879
-# 553 X138402      X138362         2               Ref 0.7123166  4969.6985
-# 555 X138402      X138366         2               Ref 0.7709804  5326.2428
-# 559 X138402      X138374         2               Ref 0.7194856  7891.3114
-# 560 X138402      X138376         2               Ref 0.7766343  8328.1321
-# 561 X138402      X138378         2               Ref 0.7525221 10081.1935
-# 574 X138402      X138404         2               Ref 0.7531688   107.7767
-# 578 X138404      X138362       Ref               Ref 0.7110602  4892.8740
-# 580 X138404      X138366       Ref               Ref 0.7860574  5278.2006
-# 584 X138404      X138374       Ref               Ref 0.6749751  7839.1925
-# 585 X138404      X138376       Ref               Ref 0.7584346  8270.3423
-# 586 X138404      X138378       Ref               Ref 0.7436902 10025.0451
-# 603 X138406      X138362         2               Ref 0.8239348  7166.2478
-# 605 X138406      X138366         2               Ref 0.8808618  7440.3262
-# 609 X138406      X138374         2               Ref 0.8430028 10017.5409
-# 610 X138406      X138376         2               Ref 0.8899893 10480.4286
-# 611 X138406      X138378         2               Ref 0.8743764 12223.8767
-# 624 X138406      X138404         2               Ref 0.7982151  2274.9200
-
-
-dim(df_ecogeocor) # 144   6
-df_ecogeocor <- df_ecogeocor[-sel.rm, ]
-dim(df_ecogeocor) # 105   6
 
 names(df_ecogeocor)
 # [1] "samp"              "compare_with"      "samp_type"         "compare_with_type" "dist_eco"         
@@ -27451,7 +27641,7 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,y=dist_eco, colour = factor(group)
   stat_smooth(data = df_ecogeocor %>% filter(group == "28 yr"),method = "lm", formula = y ~ poly(x, 2)) +
   stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
   
-  annotate(geom="text", x= 0, y= 0.45, label = "Filtered data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
+  annotate(geom="text", x= 0, y= 0.45, label = "Filtered data (excl. southern)", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
   
   theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
     panel.grid.major = element_blank(),
@@ -27463,8 +27653,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,y=dist_eco, colour = factor(group)
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-ExclFarSouthSites-A.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(d)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-ExclFarSouthSites-d.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 ## for each rehab age determine if there is excess spatial auto-correlation??
@@ -27476,30 +27666,26 @@ dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-
 
 
 dim(df_ecogeocor) # 105   7
-dim(df_out)       # 144   10
+dim(df_out)       # 105   10
 
-# also need to filter out far southern sites in df_out
-sel.rm <- which(df_out$samp %in% c("X138402", "X138404", "X138406") | df_out$compare_with %in% c("X138402", "X138404", "X138406")) # qty 39 rows
-df_out[sel.rm, ]
-df_out <- df_out[-sel.rm, ]
 
 head(df_ecogeocor)
-#       samp compare_with samp_type compare_with_type  dist_eco  dist_geo group
+# samp compare_with samp_type compare_with_type  dist_eco  dist_geo group
 # 3  X138358      X138362        23               Ref 0.6198404  991.2395 23 yr
 # 5  X138358      X138366        23               Ref 0.7285577 1291.3074 23 yr
 # 9  X138358      X138374        23               Ref 0.6956136 2447.0999 23 yr
 # 10 X138358      X138376        23               Ref 0.7995085 2692.4727 23 yr
 # 11 X138358      X138378        23               Ref 0.7671557 4442.1090 23 yr
-# 28 X138360      X138362        23               Ref 0.6778759  296.7652 23 yr
+# 25 X138360      X138362        23               Ref 0.6778759  296.7652 23 yr
 
 head(df_out)
-#      samp compare_with year_rehab similarity group dist_measure       tax_level   study corrected                facet_x
-# 1 X138358      X138362       1996   38.01596    23  Bray-Curtis ASV (with Tree) South32        no Bray-Curtis\nASV-level
-# 2 X138358      X138366       1996   27.14423    23  Bray-Curtis ASV (with Tree) South32        no Bray-Curtis\nASV-level
-# 3 X138358      X138374       1996   30.43864    23  Bray-Curtis ASV (with Tree) South32        no Bray-Curtis\nASV-level
-# 4 X138358      X138376       1996   20.04915    23  Bray-Curtis ASV (with Tree) South32        no Bray-Curtis\nASV-level
-# 5 X138358      X138378       1996   23.28443    23  Bray-Curtis ASV (with Tree) South32        no Bray-Curtis\nASV-level
-# 7 X138360      X138362       1996   32.21241    23  Bray-Curtis ASV (with Tree) South32        no Bray-Curtis\nASV-level
+#      samp compare_with year_rehab similarity group dist_measure       tax_level                           study corrected                facet_x
+# 1 X138358      X138362       1996   38.01596    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)        no Bray-Curtis\nASV-level
+# 2 X138358      X138366       1996   27.14423    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)        no Bray-Curtis\nASV-level
+# 3 X138358      X138374       1996   30.43864    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)        no Bray-Curtis\nASV-level
+# 4 X138358      X138376       1996   20.04915    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)        no Bray-Curtis\nASV-level
+# 5 X138358      X138378       1996   23.28443    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)        no Bray-Curtis\nASV-level
+# 6 X138360      X138362       1996   32.21241    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)        no Bray-Curtis\nASV-level
 
 identical(df_ecogeocor$samp,df_out$samp) # TRUE
 identical(df_ecogeocor$compare_with,df_out$compare_with) # TRUE
@@ -27605,8 +27791,8 @@ p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,colo
   guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
   labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Bray-Curtis)\nRehab vs. Ref samples")
 p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-ExclFarSouthSites-B.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(e)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-ExclFarSouthSites-e.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -27639,8 +27825,8 @@ p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(gro
   guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
   labs(x = "Geographic distance (m)", y = "Ecological distance (Bray-Curtis)")
 p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-SACORRECTED-ExclFarSouthSites-C.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
+grid.text(label = "(f)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Bray-Curtis-SOUTH32-SACORRECTED-ExclFarSouthSites-f.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
 
 
 
@@ -27665,13 +27851,13 @@ df_new$similarity <- df_ecogeocor$similarity_corr
 df_new$corrected <- "yes"
 
 head(df_new)
-# samp compare_with year_rehab similarity group dist_measure       tax_level   study corrected                facet_x
-# 1 X138358      X138362       1996   36.20741    23  Bray-Curtis ASV (with Tree) South32       yes Bray-Curtis\nASV-level
-# 2 X138358      X138366       1996   25.92499    23  Bray-Curtis ASV (with Tree) South32       yes Bray-Curtis\nASV-level
-# 3 X138358      X138374       1996   31.03079    23  Bray-Curtis ASV (with Tree) South32       yes Bray-Curtis\nASV-level
-# 4 X138358      X138376       1996   20.93217    23  Bray-Curtis ASV (with Tree) South32       yes Bray-Curtis\nASV-level
-# 5 X138358      X138378       1996   25.29034    23  Bray-Curtis ASV (with Tree) South32       yes Bray-Curtis\nASV-level
-# 7 X138360      X138362       1996   28.85174    23  Bray-Curtis ASV (with Tree) South32       yes Bray-Curtis\nASV-level
+#      samp compare_with year_rehab similarity group dist_measure       tax_level                           study corrected                facet_x
+# 1 X138358      X138362       1996   36.20741    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)       yes Bray-Curtis\nASV-level
+# 2 X138358      X138366       1996   25.92499    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)       yes Bray-Curtis\nASV-level
+# 3 X138358      X138374       1996   31.03079    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)       yes Bray-Curtis\nASV-level
+# 4 X138358      X138376       1996   20.93217    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)       yes Bray-Curtis\nASV-level
+# 5 X138358      X138378       1996   25.29034    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)       yes Bray-Curtis\nASV-level
+# 6 X138360      X138362       1996   28.85174    23  Bray-Curtis ASV (with Tree) South32\n(exclude southernmost)       yes Bray-Curtis\nASV-level
 
 unique(df_new$group)
 # [1] 23  Ref 2   17  12  20  8   14  28 
@@ -27690,7 +27876,6 @@ length(df_results) #
 names(df_results)
 
 df_results[["South32-Bray-ASV-withTree-SAcorrected-ExclFarSouthSites"]] <- df_new
-#df_out <- df_results[[1]]
 
 
 p <- ggplot(data=df_new, aes(x=group, similarity)) + ggtitle("Bray Curtis Similarity\nSA-corrected - Excluding far south sites") + #x=group
@@ -27709,466 +27894,106 @@ ggsave(plot=p, filename = paste0(workdir,"/plots/","Bray-Curtis-Similarity--Sout
 
 
 
-#-------------------------
+## Kruskal-Wallis multiple comparison test 
+## with post-hoc Dunn test
 
-#### Investigating spatial auto-correlation -- South32 -- Jaccard -- ExcludeFarSouth
-#-------------------------
+str(df_new)
+# 'data.frame':	630 obs. of  12 variables:
 
-phy_in <- phy.south32.withTree
-min(taxa_sums(phy_in)) # 2
-sum(sample_sums(phy_in)) # 2049625
 
-# rarefy #1
-seed <- 123
-r1.ps <- rarefy_even_depth(phy_in, sample.size = min(sample_sums(phy_in)),
-                           rngseed = seed, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)
-min(taxa_sums(r1.ps)) # 1
-sample_sums(r1.ps) # all 54122
-ntaxa(r1.ps) #  54327
-sum(sample_sums(r1.ps)) # 1353050
+df_new$group
 
-r1.ps
-# phyloseq-class experiment-level object
-# otu_table()   OTU Table:         [ 54327 taxa and 25 samples ]
-# sample_data() Sample Data:       [ 25 samples by 139 sample variables ]
-# tax_table()   Taxonomy Table:    [ 54327 taxa by 6 taxonomic ranks ]
-# phy_tree()    Phylogenetic Tree: [ 54327 tips and 54325 internal nodes ]
 
+# Kruskal-Wallis test
 
+kt <- kruskal.test( similarity ~ group, df_new) # Kruskal Wallis test
+kt
+# Kruskal-Wallis rank sum test
+# data:  distance by group
+# Kruskal-Wallis chi-squared = 72.704, df = 8, p-value = 1.42e-12
 
-str(r1.ps@sam_data)
-names(sample_data(r1.ps))
 
-r1.ps@sam_data$group <- r1.ps@sam_data$`year of rehab or ref`
-unique(r1.ps@sam_data$group) # "1996" "REF"  "2017" "2002" "2007" "1999" "2011" "2005" "1991"
+# library(FSA); packageVersion("FSA") # '0.8.30'
+# library(rcompanion); packageVersion("rcompanion") # '2.3.25'
 
-r1.ps@sam_data$group <- factor(r1.ps@sam_data$group,
-                               levels = c("2017","2011","2007","2005","2002","1999","1996","1991","REF"),
-                               labels = c("2","8","12","14","17","20","23","28","Ref"), ordered=TRUE)
-# South32 (sampled in 2019; rehab 2-28 yr old)
+## Dunn Test uses factor vector or non-numeric vector that can be coerced to a factor vector
 
-
-
-names(df_results)
-
-df_out <- df_results[[ "South32-Jaccard-ASV-withTree" ]]
-
-
-names(r1.ps@sam_data) # includes ...
-# [1] "Sample_ID"                                             "NCBI_Submission"                                      
-# [3] "NCBI_Sample_Accession"                                 "Organism"                                             
-# [5] "Tax_ID"                                                "SampleName_depth"                                     
-# [7] "NCBI_BioProject"                                       "Date_sampled [YYYY-MM-DD]"                            
-# [9] "Time_sampled [hh:mm]"                                  "Latitude [decimal degrees]"                           
-# [11] "Longitude [decimal degrees]"     
-
-r1.ps@sam_data$`Latitude [decimal degrees]`
-r1.ps@sam_data$`Longitude [decimal degrees]`
-
-head(r1.ps@otu_table)
-otu_tab <- t( as(r1.ps@otu_table, "matrix"))
-
-dist.jacc <- vegan::vegdist(x = otu_tab, method = "jaccard", binary = TRUE)
-str(dist.jacc)
-dist.jacc <- as(dist.jacc, "matrix")
-
-identical(colnames(dist.jacc),rownames(dist.jacc)) # TRUE
-
-
-## determine spatial auto-correlation
-
-# data.frame containing longitude and latitude coordinates
-
-long_lats <- data.frame( xlong=r1.ps@sam_data$`Longitude [decimal degrees]`,
-                         ylat =r1.ps@sam_data$`Latitude [decimal degrees]`
-)
-row.names(long_lats) <- row.names(r1.ps@sam_data)
-
-# calculate matrix of pairwise distances between all points
-geo_dist.m <- geodist(long_lats, measure = "haversine")
-
-geo_dist <- as.data.frame( geo_dist.m )
-row.names(geo_dist) <- row.names(r1.ps@sam_data)
-colnames(geo_dist) <- row.names(r1.ps@sam_data)
-
-# check that colnames and row.names align
-identical(row.names(geo_dist),row.names(dist.jacc)) # TRUE
-identical(colnames(geo_dist),colnames(dist.jacc)) # TRUE
-
-identical(colnames(dist.jacc), row.names(dist.jacc)) # TRUE
-
-
-df_eco <- dist.jacc
-
-df_ecogeocor <- data.frame(samp= rep( x = colnames(df_eco), each=length( colnames(df_eco) ) ),
-                           compare_with = rep( x = colnames(df_eco), times = length(colnames(df_eco))),
-                           
-                           samp_type=NA,
-                           compare_with_type=NA,
-                           
-                           dist_eco=NA,
-                           dist_geo=NA
-)
-
-for (i in 1:dim(df_ecogeocor)[1]) {
-  #i<-1
-  this_samp <- df_ecogeocor$samp[i]
-  this_compare <- df_ecogeocor$compare_with[i]
-  sel1 <- which( row.names(r1.ps@sam_data) == this_samp)
-  df_ecogeocor$samp_type[i] <- as.character( r1.ps@sam_data$group[sel1] )
-  
-  sel2 <- which( row.names(r1.ps@sam_data) == this_compare)
-  df_ecogeocor$compare_with_type[i] <- as.character( r1.ps@sam_data$group[sel2] )
-  
-  row <- which(rownames(df_eco)==this_samp)
-  col <- which(colnames(df_eco)==this_compare)
-  df_ecogeocor$dist_eco[i] <- df_eco[row,col]
-  
-  row <- which(rownames(geo_dist)==this_samp)
-  col <- which(colnames(geo_dist)==this_compare)
-  df_ecogeocor$dist_geo[i] <- geo_dist[row,col]
-  
-  print(paste0("completed ",i))
-}
-
-dim(df_ecogeocor) #  625   6
-
-# remove remnant self-comparisons
-sel <- which(df_ecogeocor$samp==df_ecogeocor$compare_with) #
-identical( which(df_ecogeocor$samp==df_ecogeocor$compare_with), which(df_ecogeocor$dist_eco==0) ) # TRUE
-df_ecogeocor <- df_ecogeocor[-sel, ]
-dim(df_ecogeocor) # 600   6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-summary(df_ecogeocor$dist_eco)
-
-head(df_ecogeocor)
-#      samp compare_with samp_type compare_with_type  dist_eco  dist_geo
-# 2 X138358      X138360        23                23 0.6668722  698.9024
-# 3 X138358      X138362        23               Ref 0.7011121  991.2395
-# 4 X138358      X138364        23                 2 0.7854806 1212.3960
-# 5 X138358      X138366        23               Ref 0.7874227 1291.3074
-# 6 X138358      X138368        23                17 0.7072853 1679.4491
-# 7 X138358      X138370        23                12 0.7463683 1201.3421
-
-
-# consider only compare with type 'Ref' as that is focus 
-# and potential for problematic study design and analysis
-
-sel <- which(df_ecogeocor$compare_with_type=="Ref") # qty 144
-df_ecogeocor <- df_ecogeocor[sel, ]
-dim(df_ecogeocor) # 144  6
-
-plot(x = df_ecogeocor$dist_geo, y = df_ecogeocor$dist_eco)
-
-
-## what is distribution of geological distance?
-hist(df_ecogeocor$dist_geo)
-hist(r1.ps@sam_data$`Latitude [decimal degrees]`, breaks = 30)
-# southern cluster is > 32.94
-sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.94) # qty 3
-row.names(r1.ps@sam_data)[sel] # "X138402" "X138404" "X138406"
-r1.ps@sam_data$Sample_ID[sel] # "102.100.100/138402" "102.100.100/138404" "102.100.100/138406"
-r1.ps@sam_data$group[sel] # 2   Ref 2  
-
-# remove these from df_ecogeocor
-names(df_ecogeocor)
-# [1] "samp"              "compare_with"      "samp_type"         "compare_with_type" "dist_eco"         
-# [6] "dist_geo" 
-
-sel.rm <- which(df_ecogeocor$samp %in% c("X138402", "X138404", "X138406") | df_ecogeocor$compare_with %in% c("X138402", "X138404", "X138406")) # qty 39 rows
-df_ecogeocor[sel.rm, ]
-
-dim(df_ecogeocor) # 144   6
-df_ecogeocor <- df_ecogeocor[-sel.rm, ]
-dim(df_ecogeocor) # 105   6
-
-
-unique(df_ecogeocor$samp_type)
-# "23"  "Ref" "2"   "17"  "12"  "20"  "8"   "14"  "28" 
-
-df_ecogeocor$group <- df_ecogeocor$samp_type
-df_ecogeocor$group <- factor(df_ecogeocor$group, 
-                             levels=c("2","8","12","14","17","20","23","28","Ref"),
-                             labels=c("2 yr","8 yr","12 yr","14 yr","17 yr","20 yr","23 yr","28 yr","Ref"),
-                             ordered = TRUE)
-length(levels(df_ecogeocor$group)) # 9
-
-table(df_ecogeocor$group)
-# 2 yr  8 yr 12 yr 14 yr 17 yr 20 yr 23 yr 28 yr   Ref 
-#    5    15     5    10    10    10    20    10    20
-
-
-# #library(viridis); packageVersion("viridis") # ‘0.5.1’
-# cols.group <- viridis(n=length(levels(df_ecogeocor$group)))
-# names(cols.group) <- levels(df_ecogeocor$group)
-# cols.group
-# # 2 yr        8 yr       12 yr       14 yr       17 yr       20 yr       23 yr       28 yr         Ref 
-# # "#440154FF" "#472D7BFF" "#3B528BFF" "#2C728EFF" "#21908CFF" "#27AD81FF" "#5DC863FF" "#AADC32FF" "#FDE725FF" 
-
-cols.group <- cols.group.south32
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "2 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "8 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "12 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "14 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "17 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "20 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "23 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "28 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.6, label = "Filtered data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.75)),
-    legend.text = element_text(size=rel(0.65))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-SOUTH32-ExclFarSouthSites-A.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-## for each rehab age determine if there is excess spatial auto-correlation??
-## expect increasing eco-distance with increasing geo-distance
-## if this occurs, does it occur at a rate greater 
-
-( reveg_groups <- levels(df_ecogeocor$group) )
-# "2 yr"  "8 yr"  "12 yr" "14 yr" "17 yr" "20 yr" "23 yr" "28 yr" "Ref"  
-
-
-dim(df_ecogeocor) # 105   7
-dim(df_out)       # 144   10
-
-# also need to filter out far southern sites in df_out
-sel.rm <- which(df_out$samp %in% c("X138402", "X138404", "X138406") | df_out$compare_with %in% c("X138402", "X138404", "X138406")) # qty 39 rows
-df_out[sel.rm, ]
-df_out <- df_out[-sel.rm, ]
-dim(df_out)       # 105   10
-
-head(df_ecogeocor)
-
-head(df_out)
-
-
-identical(df_ecogeocor$samp,df_out$samp) # TRUE
-identical(df_ecogeocor$compare_with,df_out$compare_with) # TRUE
-
-
-df_ecogeocor$similarity <- df_out$similarity
-df_ecogeocor$tax_level <- df_out$tax_level
-df_ecogeocor$study <- df_out$study
-df_ecogeocor$dist_measure <- df_out$dist_measure
-df_ecogeocor$facet_x <- df_out$facet_x
-df_ecogeocor$similarity_corr <- NA
-df_ecogeocor$dist_eco_corr <- NA
-
-
-preds.temp <- data.frame(dist_geo = sort( unique(df_ecogeocor$dist_geo)))
-diff_models <- list()
-
-
-for (i in 1:(length(reveg_groups)-1)) {
-  #i<-1
-  this_group <- reveg_groups[i]
-  
-  x <- df_ecogeocor %>% filter(group == reveg_groups[i])
-  x_ref <- df_ecogeocor %>% filter(group == "Ref")
-  #dim(x) # 54 14
-  #dim(x_ref) # 306  14
-  # mean centre eco-distances
-  x$dist_eco_mc <- x$dist_eco - mean(x$dist_eco)
-  #plot(x$dist_geo,x$dist_eco_mc)
-  x_ref$dist_eco_mc <- x_ref$dist_eco - mean(x_ref$dist_eco)
-  #plot(x_ref$dist_geo,x_ref$dist_eco_mc)
-  
-  #model each spatial trend
-  m <- lm(data=x, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  m_ref <- lm(data=x_ref, formula = dist_eco_mc ~ poly(dist_geo, 2))
-  preds <- preds.temp
-  ## limit predictions to max dist_geo
-  #sel <- which(preds$dist_geo <= max(x$dist_geo))
-  # limit predictions to extent of dist_geo
-  sel <- which(preds$dist_geo >= min(x$dist_geo) & preds$dist_geo <= max(x$dist_geo))
-  preds <- as.data.frame( preds[sel, ] )
-  names(preds)[1] <- "dist_geo" # need to rename field; it is lost in previous step
-  preds$m <- predict(m, newdata = preds)
-  preds$m_ref <- predict(m_ref, newdata = preds)
-  #plot(preds$dist_geo,preds$m,col="red")
-  #points(preds$dist_geo,preds$m_ref,col="green")
-  preds$diff <- preds$m - preds$m_ref
-  preds$group <- this_group
-  #points(preds$dist_geo,preds$diff,col="orange")
-  plot(preds$dist_geo,preds$diff,col="orange", main = paste0("Diff Reveg age: ",this_group))
-  # apply correction to similarity
-  sel.df <- which(df_ecogeocor$group == this_group)
-  for (j in 1:length(sel.df)) {
-    #j<-1
-    sel.pred <- which(preds$dist_geo == df_ecogeocor$dist_geo[ sel.df[j] ])
-    this_diff_dist_eco <- preds$diff[sel.pred]
-    # similarity = 100*(1 - distance)
-    # corrected similarity = 100*[1 -  (distance - distance-correction)]
-    df_ecogeocor$similarity[ sel.df[j] ] # 13.10838
-    df_ecogeocor$similarity_corr[ sel.df[j] ] <- 100*(1 - (df_ecogeocor$dist_eco[ sel.df[j] ] - this_diff_dist_eco))
-    df_ecogeocor$dist_eco_corr[ sel.df[j] ] <- 1 - (1/100)*df_ecogeocor$similarity_corr[ sel.df[j] ]
-  }
-  plot(df_ecogeocor$similarity[ sel.df ], df_ecogeocor$similarity_corr[ sel.df ], main = paste0("Group: ",this_group))
-  diff_models[[this_group]] <- preds
-  print(paste0("completed ",i))
-}
-
-## but note there will be no 'corrected' values for the "Ref" samples - so just use previous values 
-sel <- which(df_ecogeocor$group == "Ref")
-df_ecogeocor$similarity_corr[sel] # all NAs
-df_ecogeocor$dist_eco_corr[sel] # all NAs
-df_ecogeocor$similarity_corr[sel] <- df_ecogeocor$similarity[sel]
-df_ecogeocor$dist_eco_corr[sel]   <- df_ecogeocor$dist_eco[sel]
-
-
-## plot modelled data for excess spatial auto-correlation 
-
-names(diff_models) # "2 yr"  "8 yr"  "12 yr" "14 yr" "17 yr" "20 yr" "23 yr" "28 yr"
-
-pdata <- diff_models[[1]]
-for (i in 2:length(diff_models)) {
-  pdata <- rbind(pdata,diff_models[[i]])
-}
-dim(pdata) # 636    5
-names(pdata) # "dist_geo" "m"        "m_ref"    "diff"     "group"
-unique(pdata$group) # "2 yr"  "8 yr"  "12 yr" "14 yr" "17 yr" "20 yr" "23 yr" "28 yr"
-pdata$group <- factor(pdata$group, levels=c("2 yr",  "8 yr",  "12 yr", "14 yr", "17 yr", "20 yr", "23 yr", "28 yr"),
-                      ordered=TRUE)
-
-p <- ggplot(data = pdata, aes(x=dist_geo,y=diff,color=factor(group)) ) +  #,color=factor(group)
-  #geom_point( alpha = 0.6) +
-  #geom_point() +# pdata %>% filter(group == "3 yr"),aes(x=dist_geo,y=diff)) +
-  geom_line(size=1) +
-  geom_hline(yintercept = 0, size=0.5, linetype="dashed", colour="grey") +
-  theme_bw() +
-  scale_color_manual(values=cols.group[-length(cols.group)]) +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.7)),
-    legend.text = element_text(size=rel(0.65))
-  ) +
-  #ylim(0,0.2) +
-  guides(colour = guide_legend(title = "Rehab\nage",override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
-  labs(x = "Geographic distance (m)", y = "\U0394 ecol. dist. (Jaccard)\nRehab vs. Ref samples")
-p
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","DIFF-in-Ecodist-vs-Geodist-Jaccard-SOUTH32-ExclFarSouthSites-B.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-## plot corrected distributions ...
-
-p <- ggplot(data=df_ecogeocor, aes(x=dist_geo,dist_eco_corr, colour = factor(group) )) + 
-  geom_point( alpha = 0.6) +
-  theme_bw() +
-  scale_color_manual(values=cols.group) + 
-  
-  stat_smooth(data = df_ecogeocor %>% filter(group == "2 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "8 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "12 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "14 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "17 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "20 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "23 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "28 yr"),method = "lm", formula = y ~ poly(x, 2)) +
-  stat_smooth(data = df_ecogeocor %>% filter(group == "Ref"),method = "lm", formula = y ~ poly(x, 2)) +
-  
-  annotate(geom="text", x= 0, y= 0.6, label = "Filtered &\ncorrected data", hjust=0, vjust=0, size = 3.25 , col = "grey50") +
-  
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.title = element_text(size=rel(0.75)),
-    legend.text = element_text(size=rel(0.65))
-  ) +
-  guides(colour = guide_legend(title = "Rehab\nage", override.aes = list(alpha = 1, fill=NA), nrow = 3)) +
-  labs(x = "Geographic distance (m)", y = "Ecological distance (Jaccard)")
-p
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","Ecodist-vs-Geodist-Jaccard-SOUTH32-SACORRECTED-ExclFarSouthSites-C.tiff"), width = 8, height = 11, units = "cm", res=600, compression="lzw",type="cairo")
-
-
-
-names(df_results)
-names(df_results[[1]])
-# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"         
-# [8] "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"
-
-names(df_ecogeocor)
-
-## make names of df_ecogeocor compatible with df_out
-head(df_out)
-
-
-head(df_ecogeocor)
-
-# confirm these refer to the same sites and comparison sites
-identical( paste0(df_out$samp,"_",df_out$compare_with) , paste0(df_ecogeocor$samp,"_",df_ecogeocor$compare_with) ) # TRUE
-dim(df_out) # 105  10
-
-df_new <- df_out
-df_new$similarity <- df_ecogeocor$similarity_corr
-df_new$corrected <- "yes"
-
-head(df_new)
-#      samp compare_with year_rehab similarity group dist_measure       tax_level   study corrected            facet_x
-# 1 X138358      X138362       1996   27.61936    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 2 X138358      X138366       1996   19.96079    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 3 X138358      X138374       1996   25.07977    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 4 X138358      X138376       1996   16.99089    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 5 X138358      X138378       1996   19.64054    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-# 7 X138360      X138362       1996   21.00862    23      Jaccard ASV (with Tree) South32       yes Jaccard\nASV-level
-
-unique(df_new$group)
+unique( df_new$group ) 
 # [1] 23  Ref 2   17  12  20  8   14  28 
 # Levels: 2 < 8 < 12 < 14 < 17 < 20 < 23 < 28 < Ref
 
 
+# post-hoc Dunn test below has a glitch that throws out zeros from grouping labels ... to perform work-around
+temp <- df_new
+temp$group <- as.character(temp$group)
+temp$group <- factor(temp$group, levels = c("2","8","12","14","17","20","23","28","Ref"),
+                     labels = c("2","8","12","14","17","twenty","23","28","Ref"),ordered = TRUE)
 
-table(df_new$group)
-# 2   8  12  14  17  20  23  28 Ref 
-# 5  15   5  10  10  10  20  10  20 
 
+
+pt <- dunnTest( similarity ~ group, data = temp,
+                method = "bonferroni" )
+pt
+
+pt$dtres
+pt <- pt$res
+pt
+
+cldList(comparison = pt$Comparison,
+        p.value    = pt$P.adj,
+        threshold  = 0.05)
+
+sig <- cldList(comparison = pt$Comparison,
+               p.value    = pt$P.adj,
+               threshold  = 0.05)
+
+str(sig)
+# 'data.frame':	9 obs. of  3 variables:
+
+unique(sig$Group) # "12"     "14"     "17"     "2"      "23"     "28"     "8"      "Ref"    "twenty"
+
+sig$Group <- factor( sig$Group, levels=c("2","8","12","14","17","twenty","23","28","Ref"),
+                     labels = c("2","8","12","14","17","20","23","28","Ref"),
+                     ordered=TRUE )
+
+
+sig[ order(sig$Group), ]
+#   Group Letter MonoLetter
+# 4     2     ab       ab  
+# 7     8      b        b  
+# 1    12    abc       abc 
+# 2    14    abc       abc 
+# 3    17    abc       abc 
+# 9    20     cd         cd
+# 5    23     ac       a c 
+# 6    28    acd       a cd
+# 8   Ref      d          d
+
+sig <- sig[ order(sig$Group), ]
+
+levels(sig$Group) # "2"   "8"   "12"  "14"  "17"  "20"  "23"  "28"  "Ref"
+
+## store annotations for later facet_grid ggplot
+names(df_new)
+# [1] "samp"           "compare_with"   "site"           "site_full_desc" "year_rehab"     "similarity"     "group"          "dist_measure"   "tax_level"     
+# [10] "study"          "corrected"      "facet_x"  
+
+anno <- data.frame(group=sig$Group,
+                   sig_letter = sig$Letter,
+                   similarity= c(26,27,31,30,38,48,45,48,50),
+                   dist_measure = rep( "Bray-Curtis", times = dim(sig)[1]),
+                   tax_level  = rep( "ASV (with Tree)", times = dim(sig)[1]),
+                   study  = rep( "South32\n(exclude southernmost)", times = dim(sig)[1]),
+                   corrected = rep( "yes" , times = dim(sig)[1]),
+                   facet_x  = rep( "Bray-Curtis\nASV-level", times = dim(sig)[1])
+)
 
 # only make this once
-#df_results <- list()
-length(df_results) #
-names(df_results)
+#df_anno <- list()
+length(df_anno) # 0
+names(df_anno)
 
-df_results[["South32-Jaccard-ASV-withTree-SAcorrected-ExclFarSouthSites"]] <- df_new
-#df_out <- df_results[[1]]
-
-
-p <- ggplot(data=df_new, aes(x=group, similarity)) + ggtitle("Jaccard Similarity\nSA-corrected - Excluded far south sites") + #x=group
-  geom_boxplot(outlier.shape = NA)+
-  #geom_point() +
-  geom_jitter(size=1.5,width = 0.15, alpha=0.2) +
-  #geom_hline(yintercept = 70, color="red") +
-  theme_bw() +
-  theme(#axis.text.x  = element_text(angle=60, hjust=1, vjust = 1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()) +
-  labs(x = NULL, y = "Similarity to Remnants (%)")
-p
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Jaccard-Similarity--South32-Site-with-SA-correction-ExclFarSouthSites.tiff"), width = 10, height = 10, units = "cm", dpi = 600, compression = "lzw", type = "cairo")
-
+df_anno[["South32-Bray-ASV-withTree-SAcorrected-ExclFarSouthSites"]] <- anno
 
 
 
@@ -28177,7 +28002,7 @@ ggsave(plot=p, filename = paste0(workdir,"/plots/","Jaccard-Similarity--South32-
 
 
 #### facet_grid trajectory plots + predict time to reach ref:
-##   ASV -- Jaccard + Bray-Curtis -- Original + SA-corrected -- Alcoa + Iluka-Eneabba + South32
+##   ASV -- Bray-Curtis -- Original + SA-corrected -- Alcoa + Iluka-Eneabba + South32
 #-------------------------
 
 names(df_results)
@@ -28189,17 +28014,12 @@ names(df_results[[1]])
 # [7] "group"          "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"  
 
 
-keep_results <- c("Alcoa-Jaccard-ASV-withTree"     ,  "Alcoa-Jaccard-ASV-withTree-SAcorrected" ,
-                  "Alcoa-Bray-ASV-withTree" ,   "Alcoa-Bray-ASV-withTree-SAcorrected" ,
+keep_results <- c("Alcoa-Bray-ASV-withTree" ,   "Alcoa-Bray-ASV-withTree-SAcorrected" ,
                   
-                  
-                  "Iluka-Eneabba-Jaccard-ASV-withTree" , "Iluka-Eneabba-Jaccard-ASV-withTree-SAcorrected" ,
                   "Iluka-Eneabba-Bray-ASV-withTree" , "Iluka-Eneabba-Bray-ASV-withTree-SAcorrected" ,
                   
-                  
-                  "South32-Jaccard-ASV-withTree"  ,  "South32-Jaccard-ASV-withTree-SAcorrected" ,
                   "South32-Bray-ASV-withTree" ,      "South32-Bray-ASV-withTree-SAcorrected"  
-                   
+                  
 )
 
 
@@ -28209,8 +28029,8 @@ for (i in 2:length(keep_results)) {
   traj_data <- rbind(traj_data,df_results[[ keep_results[i] ]][ ,keep_cols])
   print(paste0("completed ",i))
 }
-dim(traj_data) # 3996    9
-unique(traj_data$facet_x) # "Jaccard\nASV-level"     "Bray-Curtis\nASV-level"
+dim(traj_data) # 1998    9
+unique(traj_data$facet_x) # "Bray-Curtis\nASV-level"
 
 traj_data$NEW_newfacet_x <- traj_data$facet_x
 sel <- which(traj_data$corrected == "no")
@@ -28218,13 +28038,10 @@ traj_data$NEW_newfacet_x[sel] <- paste0("Original data\n",traj_data$NEW_newfacet
 sel <- which(traj_data$corrected == "yes")
 traj_data$NEW_newfacet_x[sel] <- paste0("Corrected data\n",traj_data$NEW_newfacet_x[sel])
 unique(traj_data$NEW_newfacet_x)
-# [1] "Original data\nJaccard\nASV-level"      "Corrected data\nJaccard\nASV-level"     "Original data\nBray-Curtis\nASV-level" 
-# [4] "Corrected data\nBray-Curtis\nASV-level"
-traj_data$NEW_newfacet_x <- factor(traj_data$NEW_newfacet_x, levels = c("Original data\nJaccard\nASV-level",
-                                                                        "Corrected data\nJaccard\nASV-level",
-                                                                        "Original data\nBray-Curtis\nASV-level",
+# "Original data\nBray-Curtis\nASV-level"  "Corrected data\nBray-Curtis\nASV-level"
+traj_data$NEW_newfacet_x <- factor(traj_data$NEW_newfacet_x, levels = c("Original data\nBray-Curtis\nASV-level",
                                                                         "Corrected data\nBray-Curtis\nASV-level"
-                                                                        ), ordered = TRUE)
+), ordered = TRUE)
 
 keep_cols_anno <- c("group","sig_letter","similarity","dist_measure","tax_level","study","corrected","facet_x")
 anno_data <- df_anno[[ keep_results[1] ]][ ,keep_cols_anno]
@@ -28233,10 +28050,10 @@ for (i in 2:length(keep_results)) {
   anno_data <- rbind(anno_data,df_anno[[ keep_results[i] ]][ ,keep_cols_anno])
   print(paste0("completed ",i," - add rows:",dim(df_anno[[ keep_results[i] ]])[1]," - new dim: ",dim(anno_data)[1]," x ",dim(anno_data)[2]))
 }
-dim(anno_data) # 96  8
+dim(anno_data) # 48  8
 class(anno_data$facet_x) # "character"
 unique(anno_data$facet_x) # "character"
-# "Jaccard\nASV-level"     "Bray-Curtis\nASV-level"
+# "Bray-Curtis\nASV-level"
 
 anno_data$NEW_newfacet_x <- anno_data$facet_x
 sel <- which(anno_data$corrected == "no")
@@ -28244,11 +28061,8 @@ anno_data$NEW_newfacet_x[sel] <- paste0("Original data\n",anno_data$NEW_newfacet
 sel <- which(anno_data$corrected == "yes")
 anno_data$NEW_newfacet_x[sel] <- paste0("Corrected data\n",anno_data$NEW_newfacet_x[sel])
 unique(anno_data$NEW_newfacet_x)
-# [1] "Original data\nJaccard\nASV-level"      "Corrected data\nJaccard\nASV-level"     "Original data\nBray-Curtis\nASV-level" 
-# [4] "Corrected data\nBray-Curtis\nASV-level"
-anno_data$NEW_newfacet_x <- factor(anno_data$NEW_newfacet_x, levels = c("Original data\nJaccard\nASV-level",
-                                                                        "Corrected data\nJaccard\nASV-level",
-                                                                        "Original data\nBray-Curtis\nASV-level",
+# "Original data\nBray-Curtis\nASV-level"  "Corrected data\nBray-Curtis\nASV-level"
+anno_data$NEW_newfacet_x <- factor(anno_data$NEW_newfacet_x, levels = c("Original data\nBray-Curtis\nASV-level",
                                                                         "Corrected data\nBray-Curtis\nASV-level"),
                                    ordered = TRUE)
 
@@ -28284,7 +28098,7 @@ unique(traj_data$study) # "Alcoa"         "Iluka-Eneabba" "South32"
 
 unique(anno_data$study) # "Alcoa"         "Iluka-Eneabba" "South32"
 
- 
+
 
 
 
@@ -28292,12 +28106,8 @@ unique(anno_data$study) # "Alcoa"         "Iluka-Eneabba" "South32"
 
 href_lines <- data.frame(
   study  = rep( c("Alcoa", "Iluka-Eneabba", "South32"), times = 4 ),
-  # facet_x  = rep( c("Jaccard\nASV-level","Bray-Curtis\nASV-level",
-  #                   "Unweighted UniFrac\nASV-level","Weighted UniFrac\nASV-level"), each = 3),
   
-  NEW_newfacet_x <- rep( c("Original data\nJaccard\nASV-level",
-                           "Corrected data\nJaccard\nASV-level",
-                           "Original data\nBray-Curtis\nASV-level",
+  NEW_newfacet_x <- rep( c("Original data\nBray-Curtis\nASV-level",
                            "Corrected data\nBray-Curtis\nASV-level"), each = 3),
   similarity= NA
 )
@@ -28311,11 +28121,9 @@ for (i in 1:dim(href_lines)[1]) {
   href_lines$similarity[i] <- median( x$similarity[sel] )
 }
 href_lines$NEW_newfacet_x <- factor(href_lines$NEW_newfacet_x,
-                             levels = c("Original data\nJaccard\nASV-level",
-                                        "Corrected data\nJaccard\nASV-level",
-                                        "Original data\nBray-Curtis\nASV-level",
-                                        "Corrected data\nBray-Curtis\nASV-level"),
-                             ordered = TRUE)
+                                    levels = c("Original data\nBray-Curtis\nASV-level",
+                                               "Corrected data\nBray-Curtis\nASV-level"),
+                                    ordered = TRUE)
 
 
 ## fit logarithmic models for each data type (facet_x)
@@ -28338,8 +28146,7 @@ pred_models_boot <- data.frame(study=NA, # one of: "Alcoa", "Iluka-Eneabba", "So
 pred_models_boot.temp <- pred_models_boot
 
 studies <- c("Alcoa", "Iluka-Eneabba", "South32")
-metrics <- c("Original data\nJaccard\nASV-level",
-             "Corrected data\nJaccard\nASV-level",
+metrics <- c(
              "Original data\nBray-Curtis\nASV-level",
              "Corrected data\nBray-Curtis\nASV-level")
 pred_types <- c("rectangular hyperbola", "negative exponential", "logarithmic")
@@ -28348,7 +28155,7 @@ k<-3
 ## run logarithmic model only !!!
 
 x <- traj_data
-dim(x) # 3996    10
+dim(x) # 1998    10
 
 for (i in 1:length(studies)) {
   #i<-1
@@ -28370,7 +28177,27 @@ for (i in 1:length(studies)) {
     
     newdat <- newdat[-sel.na, ]
     
-
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
+    
     # prep output dataframe for prediction model to populate
     sel.dup <- which(duplicated(newdat$group)==TRUE)
     new_preds <- data.frame(matrix( nrow=dim(newdat[-sel.dup, ])[1], ncol = length(names(pred_models_boot.temp)) ))
@@ -28385,7 +28212,7 @@ for (i in 1:length(studies)) {
     new_preds$ref_median <- this_ref_median
     
     #for (k in 1:length(pred_types)) {
-
+    
     this_pred_model_type <- pred_types[k]
     
     
@@ -28396,9 +28223,6 @@ for (i in 1:length(studies)) {
     
     
     # NOW using "logarithmic" model only !!!!!
-    
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
     
     
     for (b in 1:100) {
@@ -28455,7 +28279,7 @@ for (i in 1:length(studies)) {
       
     } # END bootstrap
     
-
+    
     print(paste0("completed study: ",studies[i],"; metric: ",metrics[j],"; pred_type: ",pred_types[k]))  
     #} # END pred_types
   } # END metrics
@@ -28467,22 +28291,16 @@ pred_models_boot <- pred_models_boot[-1, ]
 
 #unique(pred_models_boot$facet_x)
 unique(pred_models_boot$NEW_newfacet_x)
-# [1] "Original data\nJaccard\nASV-level"      "Corrected data\nJaccard\nASV-level"     "Original data\nBray-Curtis\nASV-level" 
-# [4] "Corrected data\nBray-Curtis\nASV-level"
+# "Original data\nBray-Curtis\nASV-level"  "Corrected data\nBray-Curtis\nASV-level"
 
-# pred_models_boot$facet_x <- factor(pred_models_boot$facet_x,
-#                                    levels = c("Jaccard\nASV-level", "Bray-Curtis\nASV-level", 
-#                                               "Unweighted UniFrac\nASV-level", "Weighted UniFrac\nASV-level"),
-#                                    ordered = TRUE)
 pred_models_boot$NEW_newfacet_x <- factor(pred_models_boot$NEW_newfacet_x,
-                                   levels = c("Original data\nJaccard\nASV-level",
-                                              "Corrected data\nJaccard\nASV-level",
-                                              "Original data\nBray-Curtis\nASV-level",
-                                              "Corrected data\nBray-Curtis\nASV-level"),
-                                   ordered = TRUE)
+                                          levels = c(
+                                                     "Original data\nBray-Curtis\nASV-level",
+                                                     "Corrected data\nBray-Curtis\nASV-level"),
+                                          ordered = TRUE)
 
 
-dim(pred_models_boot) # 17200  10
+dim(pred_models_boot) # 8300  10
 
 
 # correct time prediction to ref; update NA to (>) 500 yrs
@@ -28492,6 +28310,15 @@ if (length(sel)>0) { pred_models_boot$pred_time_to_ref_median[sel] <- 500 }
 
 pred_models_boot$group <- factor(pred_models_boot$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
 str(pred_models_boot)
+
+
+# copy these objects to combine with later trajectory plot data for Worsley (excl. southern)
+traj_data.Hun_Ene_Wors <- traj_data
+pred_models_boot.Hun_Ene_Wors <- pred_models_boot
+href_lines.Hun_Ene_Wors <- href_lines
+anno_data.Hun_Ene_Wors <- anno_data
+
+
 
 
 str(traj_data)
@@ -28522,14 +28349,17 @@ p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
         #axis.ticks.x = element_line(linetype = 0)
         axis.ticks.x = element_line(linetype = x_ticks),
         strip.text.x = element_text(size = rel(1.1)),
-        strip.text.y = element_text(size = rel(1.1))
-        ) +
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
+  ) +
   labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
   facet_grid(rows = vars(study), cols = vars(NEW_newfacet_x), scales = "fixed", labeller = labeller(study = study_names))
 
 p
 
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--Alcoa-Iluka-South32--ASV-Jaccard-Bray-Original-SA-Corrected-with-Preds.tiff"), width = 18, height = 16, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--Alcoa-Iluka-South32--ASV-Bray-Original-SA-Corrected-with-Preds.tiff"), width = 10, height = 16, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+p.traj.Hun_Ene_Wors <- p
 
 
 
@@ -28542,13 +28372,6 @@ unique(traj_data$NEW_newfacet_x)
 
 ## Huntly-Alcoa
 sel <- which(traj_data$study == "Alcoa")
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Original data\nJaccard\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-#  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 9.503  17.824  20.345  20.092  23.213  35.809 
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Corrected data\nJaccard\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-# same
 subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Original data\nBray-Curtis\nASV-level")
 summary(traj_data$similarity[sel[subsel]])
 #  Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
@@ -28557,126 +28380,100 @@ subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] ==
 summary(traj_data$similarity[sel[subsel]])
 # same
 
+## Iluka-Eneabba
+sel <- which(traj_data$study == "Iluka-Eneabba")
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Original data\nBray-Curtis\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 21.08   26.33   29.82   29.45   32.40   39.76 
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Corrected data\nBray-Curtis\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# same
+
+## South32
+sel <- which(traj_data$study == "South32")
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Original data\nBray-Curtis\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 21.39   26.45   36.02   34.32   39.96   46.11 
+subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Corrected data\nBray-Curtis\nASV-level")
+summary(traj_data$similarity[sel[subsel]])
+# same
 
 str(pred_models_boot)
 
 unique(pred_models_boot$study_and_metric)
-# [1] "Alcoa__Original data\nJaccard\nASV-level"              "Alcoa__Corrected data\nJaccard\nASV-level"            
-# [3] "Alcoa__Original data\nBray-Curtis\nASV-level"          "Alcoa__Corrected data\nBray-Curtis\nASV-level"        
-# [5] "Iluka-Eneabba__Original data\nJaccard\nASV-level"      "Iluka-Eneabba__Corrected data\nJaccard\nASV-level"    
-# [7] "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level"  "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level"
-# [9] "South32__Original data\nJaccard\nASV-level"            "South32__Corrected data\nJaccard\nASV-level"          
-# [11] "South32__Original data\nBray-Curtis\nASV-level"        "South32__Corrected data\nBray-Curtis\nASV-level" 
+# [1] "Alcoa__Original data\nBray-Curtis\nASV-level"          "Alcoa__Corrected data\nBray-Curtis\nASV-level"        
+# [3] "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level"  "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level"
+# [5] "South32__Original data\nBray-Curtis\nASV-level"        "South32__Corrected data\nBray-Curtis\nASV-level" 
 
 pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
                                             levels = c(
-                                              "Alcoa__Original data\nJaccard\nASV-level"          ,    "Alcoa__Corrected data\nJaccard\nASV-level"            ,
+                                              
                                               "Alcoa__Original data\nBray-Curtis\nASV-level"       ,   "Alcoa__Corrected data\nBray-Curtis\nASV-level"        ,
-                                              "Iluka-Eneabba__Original data\nJaccard\nASV-level"    ,  "Iluka-Eneabba__Corrected data\nJaccard\nASV-level"    ,
+                                              
                                               "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level" , "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level",
-                                              "South32__Original data\nJaccard\nASV-level"          ,  "South32__Corrected data\nJaccard\nASV-level"          ,
+                                              
                                               "South32__Original data\nBray-Curtis\nASV-level"      ,  "South32__Corrected data\nBray-Curtis\nASV-level" 
                                             ))
 
-dim(pred_models_boot) # 17200    10
+dim(pred_models_boot) # 8300    10
 
-dat.sum <- pred_models_boot
-head(dat.sum)
-#    study                    NEW_newfacet_x                         study_and_metric group group_num similarity boot_no ref_median pred_time_to_ref_median   pred_type
-# 11 Alcoa Original data\nJaccard\nASV-level Alcoa__Original data\nJaccard\nASV-level     2         2   8.819282       1   20.34483                      66 logarithmic
-# 2  Alcoa Original data\nJaccard\nASV-level Alcoa__Original data\nJaccard\nASV-level     8         8  13.392202       1   20.34483                      66 logarithmic
-# 3  Alcoa Original data\nJaccard\nASV-level Alcoa__Original data\nJaccard\nASV-level    14        14  15.238187       1   20.34483                      66 logarithmic
-# 4  Alcoa Original data\nJaccard\nASV-level Alcoa__Original data\nJaccard\nASV-level    17        17  15.878643       1   20.34483                      66 logarithmic
-# 5  Alcoa Original data\nJaccard\nASV-level Alcoa__Original data\nJaccard\nASV-level    25        25  17.150814       1   20.34483                      66 logarithmic
-# 6  Alcoa Original data\nJaccard\nASV-level Alcoa__Original data\nJaccard\nASV-level    29        29  17.640402       1   20.34483                      66 logarithmic
 
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
+df <- data.frame(study_and_metric = rep(c(
+  "Alcoa__Original data\nBray-Curtis\nASV-level"    ,
+  "Alcoa__Corrected data\nBray-Curtis\nASV-level"   ,
+  "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level"  ,
+  "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level" ,
+  "South32__Original data\nBray-Curtis\nASV-level"      , 
+  "South32__Corrected data\nBray-Curtis\nASV-level" 
+),each=100),
+boot_no = rep(1:100, times=6),
+pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
   #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"]," yr)"))
+  this_study_and_metric <- df$study_and_metric[i]
+  #this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study_and_metric == this_study_and_metric & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study and metric: ", this_study_and_metric," ; boot_no: ",this_boot," ; i = ",i))
 }
-# [1] "Alcoa__Original data\nJaccard\nASV-level: 60.5 (51, 79 yr)"
-# [1] "Alcoa__Corrected data\nJaccard\nASV-level: 57 (48, 73 yr)"
-# [1] "Alcoa__Original data\nBray-Curtis\nASV-level: 43 (39, 49 yr)"
-# [1] "Alcoa__Corrected data\nBray-Curtis\nASV-level: 40.5 (37, 46 yr)"
-# [1] "Iluka-Eneabba__Original data\nJaccard\nASV-level: 97 (73.9, 133.45 yr)"
-# [1] "Iluka-Eneabba__Corrected data\nJaccard\nASV-level: 90 (69.95, 124 yr)"
-# [1] "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level: 93.5 (69, 131.35 yr)"
-# [1] "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level: 86.5 (64.95, 118.05 yr)"
-# [1] "South32__Original data\nJaccard\nASV-level: 131.5 (68.8, 313.25 yr)"
-# [1] "South32__Corrected data\nJaccard\nASV-level: 57 (41.95, 105.1 yr)"
-# [1] "South32__Original data\nBray-Curtis\nASV-level: 103.5 (68.9, 173.549999999999 yr)"
-# [1] "South32__Corrected data\nBray-Curtis\nASV-level: 50 (39, 76.05 yr)"
 
 
-levels( pred_models_boot$NEW_newfacet_x )
-# [1] "Original data\nJaccard\nASV-level"      "Corrected data\nJaccard\nASV-level"     "Original data\nBray-Curtis\nASV-level" 
-# [4] "Corrected data\nBray-Curtis\nASV-level"
-
-
+df.temp <- df
 
 ## plot time to target
 
-names(pred_models_boot)
-# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"
 
-p <- ggplot(data=pred_models_boot, aes(x=study, y=pred_time_to_ref_median, color = NEW_newfacet_x)) +
-  geom_boxplot() +
-  theme_bw() +
-  #scale_color_manual(
-  scale_colour_viridis_d(direction = -1, name  ="Distance measure", guide="legend",
-                         limits = c("Original data\nJaccard\nASV-level",
-                                    "Corrected data\nJaccard\nASV-level",
-                                    "Original data\nBray-Curtis\nASV-level",
-                                    "Corrected data\nBray-Curtis\nASV-level"),
-                         labels = c("Original data\nJaccard",
-                                    "Corrected data\nJaccard",
-                                    "Original data\nBray-Curtis",
-                                    "Corrected data\nBray-Curtis")
-  ) +
-  #guides(color = guide_legend(title="Distance measure")) +
-  theme(#axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    
-    legend.key.height = unit(30, "pt")
-    #legend.margin = margin(t = 20,r = 0,b = 0,l = 20,"pt")
-  ) +
-  labs(x = "Study", y = "Predicted time to reach target (yr)")
-p
+df$NEW_newfacet_x <- NA
+df$dist_measure <- NA
+df$study <- NA
 
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Jaccard-Bray-Original-SACorrected.tiff"), width = 16, height = 10, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+sel <- grep(pattern = "Alcoa", x = df$study_and_metric)
+df$study[sel] <- "Alcoa"
+sel <- grep(pattern = "Iluka-Eneabba", x = df$study_and_metric)
+df$study[sel] <- "Iluka-Eneabba"
+sel <- grep(pattern = "South32", x = df$study_and_metric)
+df$study[sel] <- "South32"
 
 
-df <- pred_models_boot
-unique( df$NEW_newfacet_x )
-# [1] Original data\nJaccard\nASV-level      Corrected data\nJaccard\nASV-level     Original data\nBray-Curtis\nASV-level 
-# [4] Corrected data\nBray-Curtis\nASV-level
-# 4 Levels: Original data\nJaccard\nASV-level < Corrected data\nJaccard\nASV-level < ... < Corrected data\nBray-Curtis\nASV-level
+sel <- grep(pattern = "Bray-Curtis", x = df$study_and_metric)
+df$dist_measure[sel] <- "Bray-Curtis"
 
-unique( df$study ) # "Alcoa"         "Iluka-Eneabba" "South32"  
+sel <- grep(pattern = "Original data", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Original data\nBray-Curtis"
+sel <- grep(pattern = "Corrected data", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Corrected data\nBray-Curtis"
+
 df$study <- factor(df$study, levels = c("Alcoa", "Iluka-Eneabba", "South32"  ),
                    labels = c("Huntly", "Eneabba", "Worsley"), ordered = TRUE)
-df$NEW_newfacet_x <- factor(df$NEW_newfacet_x, 
-                            levels = c("Original data\nJaccard\nASV-level",
-                                       "Corrected data\nJaccard\nASV-level",
-                                       "Original data\nBray-Curtis\nASV-level",
-                                       "Corrected data\nBray-Curtis\nASV-level"),
-                            labels = c("Original data\nJaccard",
-                                       "Corrected data\nJaccard",
-                                       "Original data\nBray-Curtis",
-                                       "Corrected data\nBray-Curtis"),
-                            ordered = TRUE)
+
+df$NEW_newfacet_x <- factor(df$NEW_newfacet_x, levels = c("Original data\nBray-Curtis","Corrected data\nBray-Curtis"), ordered = TRUE)
+
+
 
 p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, color = NEW_newfacet_x
   geom_boxplot() +
@@ -28686,21 +28483,113 @@ p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, colo
     axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
-    
+    strip.text.x = element_text(size = rel(1.1)),
+    strip.background = element_blank(),
+
     legend.key.height = unit(30, "pt")
     #legend.margin = margin(t = 20,r = 0,b = 0,l = 20,"pt")
   ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)") + 
+  labs(x = NULL, y = "Predicted time to reach target (yr)") +
   facet_wrap(facets = vars(study), scales = "free_y")
 p
 
-ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Jaccard-Bray-Original-SACorrected-facet-study.tiff"), width = 16, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Bray-only-Original-SACorrected-facet-study.tiff"), width = 12, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+pdata.orig_vs_SAcorrected <- p
+
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study_and_metric) 
+# [1] "Alcoa__Original data\nBray-Curtis\nASV-level"          "Alcoa__Corrected data\nBray-Curtis\nASV-level"        
+# [3] "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level"  "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level"
+# [5] "South32__Original data\nBray-Curtis\nASV-level"        "South32__Corrected data\nBray-Curtis\nASV-level"  
+
+## "Alcoa__Original data\nBray-Curtis\nASV-level"     
+sel1 <- which(df$study_and_metric == "Alcoa__Original data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Original data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 43 (39, 50), n = 100"
+
+## "Alcoa__Corrected data\nBray-Curtis\nASV-level"        
+sel2 <- which(df$study_and_metric == "Alcoa__Corrected data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Alcoa__Corrected data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 40.5 (37, 47.05), n = 100"
+
+## i.e. for Huntly, sig diff between original and SA-corrected ?? - check 95% prediction interval for difference
+diff <- data.frame(original=df$pred_time_to_ref_median[sel1], corrected=df$pred_time_to_ref_median[sel2])
+diff$diff <- diff$original - diff$corrected
+quantile(diff$diff, probs = c(0.025, 0.975), na.rm = TRUE)
+# 2.5% 97.5% 
+#   1     4 
+
+
+
+
+## "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level" 
+sel1 <- which(df$study_and_metric == "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Iluka-Eneabba__Original data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 60 (51, 72.525), n = 100"
+
+## "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level"
+sel2 <- which(df$study_and_metric == "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "Iluka-Eneabba__Corrected data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 56 (48.475, 67.525), n = 100"
+
+## i.e. for Iluka-Eneabba, sig diff between original and SA-corrected ?? - check 95% prediction interval for difference
+diff <- data.frame(original=df$pred_time_to_ref_median[sel1], corrected=df$pred_time_to_ref_median[sel2])
+diff$diff <- diff$original - diff$corrected
+quantile(diff$diff, probs = c(0.025, 0.975), na.rm = TRUE)
+# 2.5% 97.5% 
+#   -1    11 
+
+
+
+## "South32__Original data\nBray-Curtis\nASV-level"     
+sel1 <- which(df$study_and_metric == "South32__Original data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "South32__Original data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 39 (34, 46), n = 100"
+
+## "South32__Corrected data\nBray-Curtis\nASV-level"  
+sel2 <- which(df$study_and_metric == "South32__Corrected data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "South32__Corrected data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 50 (37.475, 87.05), n = 100"
+
+## i.e. for South32, sig diff between original and SA-corrected ?? - check 95% prediction interval for difference
+diff <- data.frame(original=df$pred_time_to_ref_median[sel1], corrected=df$pred_time_to_ref_median[sel2])
+diff$diff <- diff$original - diff$corrected
+hist(diff$diff)
+quantile(diff$diff, probs = c(0.025, 0.975), na.rm = TRUE)
+#    2.5%   97.5% 
+# -49.150   4.525 
+
+
 
 
 #-------------------------
 
 
-#### Predicted time to target for South32 - Excluding far south sites
+
+
+#### Predicted time to target for South32 - Excluding far south sites - Bray ONLY
 #-------------------------
 
 names(df_results)
@@ -28711,9 +28600,7 @@ names(df_results[[1]])
 # [7] "group"          "dist_measure"   "tax_level"      "study"          "corrected"      "facet_x"  
 
 
-keep_results <- c( "South32-Jaccard-ASV-withTree",
-                   "South32-Jaccard-ASV-withTree-SAcorrected-ExclFarSouthSites",
-                   "South32-Bray-ASV-withTree",
+keep_results <- c( "South32-Bray-ASV-withTree-exclude-southernmost",
                    "South32-Bray-ASV-withTree-SAcorrected-ExclFarSouthSites"
 )
 
@@ -28724,20 +28611,9 @@ for (i in 2:length(keep_results)) {
   traj_data <- rbind(traj_data,df_results[[ keep_results[i] ]][ ,keep_cols])
   print(paste0("completed ",i))
 }
-dim(traj_data) # 498   9
-unique(traj_data$facet_x) # "Jaccard\nASV-level"     "Bray-Curtis\nASV-level"
+dim(traj_data) # 210   9
+unique(traj_data$facet_x) #  "Bray-Curtis\nASV-level"
 
-# now check there are NONE of the far south sites in this data:
-
-sel.rm <- which(traj_data$samp %in% c("X138402", "X138404", "X138406") | traj_data$compare_with %in% c("X138402", "X138404", "X138406")) # qty 78 rows
-traj_data$corrected[sel.rm]
-# [1] "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no"
-# [27] "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no"
-# [53] "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no" "no"
-
-# i.e. need to remove far south sites from the Original data component in this combined dataset
-
-traj_data <- traj_data[-sel.rm, ]
 
 
 traj_data$NEW_newfacet_x <- traj_data$facet_x
@@ -28746,13 +28622,34 @@ traj_data$NEW_newfacet_x[sel] <- paste0("Original data\n",traj_data$NEW_newfacet
 sel <- which(traj_data$corrected == "yes")
 traj_data$NEW_newfacet_x[sel] <- paste0("Corrected data\n",traj_data$NEW_newfacet_x[sel])
 unique(traj_data$NEW_newfacet_x)
-# [1] "Original data\nJaccard\nASV-level"      "Corrected data\nJaccard\nASV-level"     "Original data\nBray-Curtis\nASV-level" 
-# [4] "Corrected data\nBray-Curtis\nASV-level"
-traj_data$NEW_newfacet_x <- factor(traj_data$NEW_newfacet_x, levels = c("Original data\nJaccard\nASV-level",
-                                                                        "Corrected data\nJaccard\nASV-level",
+# "Original data\nBray-Curtis\nASV-level"  "Corrected data\nBray-Curtis\nASV-level"
+traj_data$NEW_newfacet_x <- factor(traj_data$NEW_newfacet_x, levels = c(
                                                                         "Original data\nBray-Curtis\nASV-level",
                                                                         "Corrected data\nBray-Curtis\nASV-level"
 ), ordered = TRUE)
+
+
+keep_cols_anno <- c("group","sig_letter","similarity","dist_measure","tax_level","study","corrected","facet_x")
+anno_data <- df_anno[[ keep_results[1] ]][ ,keep_cols_anno]
+for (i in 2:length(keep_results)) {
+  anno_data <- rbind(anno_data,df_anno[[ keep_results[i] ]][ ,keep_cols_anno])
+  print(paste0("completed ",i))
+}
+dim(anno_data) # 18  8
+class(anno_data$facet_x) # "character"
+
+anno_data$NEW_newfacet_x <- anno_data$facet_x
+sel <- which(anno_data$corrected == "no")
+anno_data$NEW_newfacet_x[sel] <- paste0("Original data\n",anno_data$NEW_newfacet_x[sel])
+sel <- which(anno_data$corrected == "yes")
+anno_data$NEW_newfacet_x[sel] <- paste0("Corrected data\n",anno_data$NEW_newfacet_x[sel])
+unique(anno_data$NEW_newfacet_x)
+# "Original data\nBray-Curtis\nASV-level"  "Corrected data\nBray-Curtis\nASV-level"
+anno_data$NEW_newfacet_x <- factor(anno_data$NEW_newfacet_x, levels = c(
+  "Original data\nBray-Curtis\nASV-level",
+  "Corrected data\nBray-Curtis\nASV-level"
+), ordered = TRUE)
+
 
 
 
@@ -28784,12 +28681,33 @@ length(levels(traj_data$group)) #47
 # #47
 
 
-unique(traj_data$study) # "South32" 
+unique(traj_data$study) # "South32\n(exclude southernmost)"
 
-#unique(anno_data$study) # "Alcoa"         "Iluka-Eneabba" "South32"
 
- 
 
+## median reference horizontal lines ...
+
+href_lines <- data.frame(
+  study  = rep( c("South32\n(exclude southernmost)"), times = 2 ),
+  #facet_x  = rep( c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level" ), each = 3),
+  NEW_newfacet_x = rep( c("Original data\nBray-Curtis\nASV-level", "Corrected data\nBray-Curtis\nASV-level"), each = 1),
+  similarity= NA
+)
+
+x <- traj_data
+
+for (i in 1:dim(href_lines)[1]) {
+  #i<-1
+  #sel <- which(x$study == href_lines$study[i] & x$facet_x == href_lines$facet_x[i] & x$group == "Ref")
+  sel <- which(x$study == href_lines$study[i] & x$NEW_newfacet_x == href_lines$NEW_newfacet_x[i] & x$group == "Ref")
+  href_lines$similarity[i] <- median( x$similarity[sel] )
+}
+# href_lines$facet_x <- factor(href_lines$facet_x,
+#                              levels = c("Bray-Curtis\nASV-level" , "At least 10% non-zero - Aitchison\nASV-level"),
+#                              ordered = TRUE)
+href_lines$NEW_newfacet_x <- factor(href_lines$NEW_newfacet_x,
+                             levels = c("Original data\nBray-Curtis\nASV-level", "Corrected data\nBray-Curtis\nASV-level"),
+                             ordered = TRUE)
 
 
 
@@ -28817,9 +28735,8 @@ pred_models_boot <- data.frame(study=NA, # one of: "Alcoa", "Iluka-Eneabba", "So
                                pred_type=NA)     # c("rectangular hyperbola", "logarithmic")
 pred_models_boot.temp <- pred_models_boot
 
-studies <- c("South32")
-metrics <- c("Original data\nJaccard\nASV-level",
-             "Corrected data\nJaccard\nASV-level",
+studies <- c("South32\n(exclude southernmost)")
+metrics <- c(
              "Original data\nBray-Curtis\nASV-level",
              "Corrected data\nBray-Curtis\nASV-level")
 pred_types <- c("rectangular hyperbola", "negative exponential", "logarithmic")
@@ -28828,7 +28745,7 @@ k<-3
 ## run logarithmic model only !!!
 
 x <- traj_data
-dim(x) # 420    10
+dim(x) # 210    10
 
 for (i in 1:length(studies)) {
   #i<-1
@@ -28850,7 +28767,27 @@ for (i in 1:length(studies)) {
     
     newdat <- newdat[-sel.na, ]
     
-
+    
+    #plot(newdat$group_num, newdat$similarity)
+    # determine which groups to model with ...
+    groups <- sort( unique(newdat$group_num) )
+    median_of_groups <- numeric( length(groups))
+    for (z in 1:length(groups)) {
+      #z<-1
+      sel.group <- which(newdat$group_num == groups[z])
+      median_of_groups[z] <- median( newdat$similarity[ sel.group] )
+    }
+    # set start group
+    z<-1
+    start_group <- groups[z]
+    while ( median_of_groups[z] > median_of_groups[z+1]) {
+      z<-z+1
+      start_group <- groups[z]
+    }
+    sel.keep <- which(newdat$group_num >= start_group)
+    newdat <- newdat[sel.keep, ]
+    
+    
     # prep output dataframe for prediction model to populate
     sel.dup <- which(duplicated(newdat$group)==TRUE)
     new_preds <- data.frame(matrix( nrow=dim(newdat[-sel.dup, ])[1], ncol = length(names(pred_models_boot.temp)) ))
@@ -28865,7 +28802,7 @@ for (i in 1:length(studies)) {
     new_preds$ref_median <- this_ref_median
     
     #for (k in 1:length(pred_types)) {
-
+    
     
     this_pred_model_type <- pred_types[k]
     
@@ -28876,9 +28813,6 @@ for (i in 1:length(studies)) {
     
     
     # NOW using "logarithmic" model only !!!!!
-    
-    # negative exponential model, using fct = DRC.negExp() from 'aomisc' package
-    # https://www.statforbiology.com/2020/stat_nls_usefulfunctions/#asymptotic-function
     
     
     for (b in 1:100) {
@@ -28935,7 +28869,7 @@ for (i in 1:length(studies)) {
       
     } # END bootstrap
     
-
+    
     print(paste0("completed study: ",studies[i],"; metric: ",metrics[j],"; pred_type: ",pred_types[k]))  
     #} # END pred_types
   } # END metrics
@@ -28945,24 +28879,20 @@ for (i in 1:length(studies)) {
 # remove NA first row
 pred_models_boot <- pred_models_boot[-1, ]
 
+
 #unique(pred_models_boot$facet_x)
 unique(pred_models_boot$NEW_newfacet_x)
-# [1] "Original data\nJaccard\nASV-level"      "Corrected data\nJaccard\nASV-level"     "Original data\nBray-Curtis\nASV-level" 
-# [4] "Corrected data\nBray-Curtis\nASV-level"
+# "Original data\nBray-Curtis\nASV-level"  "Corrected data\nBray-Curtis\nASV-level"
 
-# pred_models_boot$facet_x <- factor(pred_models_boot$facet_x,
-#                                    levels = c("Jaccard\nASV-level", "Bray-Curtis\nASV-level", 
-#                                               "Unweighted UniFrac\nASV-level", "Weighted UniFrac\nASV-level"),
-#                                    ordered = TRUE)
+
 pred_models_boot$NEW_newfacet_x <- factor(pred_models_boot$NEW_newfacet_x,
-                                          levels = c("Original data\nJaccard\nASV-level",
-                                                     "Corrected data\nJaccard\nASV-level",
+                                          levels = c(
                                                      "Original data\nBray-Curtis\nASV-level",
                                                      "Corrected data\nBray-Curtis\nASV-level"),
                                           ordered = TRUE)
 
 
-dim(pred_models_boot) # 7600  10
+dim(pred_models_boot) # 3600  10
 
 
 # correct time prediction to ref; update NA to (>) 500 yrs
@@ -28972,54 +28902,156 @@ if (length(sel)>0) { pred_models_boot$pred_time_to_ref_median[sel] <- 500 }
 
 pred_models_boot$group <- factor(pred_models_boot$group, levels=as.character(c(0:45,"Ref")),ordered=TRUE)
 str(pred_models_boot)
-# 'data.frame':	7600 obs. of  10 variables:
-#   $ study                  : chr  "South32" "South32" "South32" "South32" ...
-# $ NEW_newfacet_x         : Ord.factor w/ 4 levels "Original data\nJaccard\nASV-level"<..: 1 1 1 1 1 1 1 1 1 1 ...
-# $ study_and_metric       : chr  "South32__Original data\nJaccard\nASV-level" "South32__Original data\nJaccard\nASV-level" "South32__Original data\nJaccard\nASV-level" "South32__Original data\nJaccard\nASV-level" ...
-# $ group                  : Ord.factor w/ 47 levels "0"<"1"<"2"<"3"<..: 3 9 13 15 18 21 24 29 31 32 ...
-# $ group_num              : num  2 8 12 14 17 20 23 28 30 31 ...
-# $ similarity             : num  15 18.3 19.2 19.6 20.1 ...
-# $ boot_no                : int  1 1 1 1 1 1 1 1 1 1 ...
-# $ ref_median             : num  25.7 25.7 25.7 25.7 25.7 ...
-# $ pred_time_to_ref_median: num  192 192 192 192 192 192 192 192 192 192 ...
-# $ pred_type              : chr  "logarithmic" "logarithmic" "logarithmic" "logarithmic" ...
 
-str(traj_data)
-# 'data.frame':	420 obs. of  10 variables:
-#   $ samp          : chr  "X138358" "X138358" "X138358" "X138358" ...
-# $ compare_with  : chr  "X138362" "X138366" "X138374" "X138376" ...
-# $ similarity    : num  29.9 21.3 23.9 15.5 18.6 ...
-# $ group         : Ord.factor w/ 47 levels "0"<"1"<"2"<"3"<..: 24 24 24 24 24 24 24 24 24 24 ...
-# $ dist_measure  : chr  "Jaccard" "Jaccard" "Jaccard" "Jaccard" ...
-# $ tax_level     : chr  "ASV (with Tree)" "ASV (with Tree)" "ASV (with Tree)" "ASV (with Tree)" ...
-# $ study         : chr  "South32" "South32" "South32" "South32" ...
-# $ corrected     : chr  "no" "no" "no" "no" ...
-# $ facet_x       : chr  "Jaccard\nASV-level" "Jaccard\nASV-level" "Jaccard\nASV-level" "Jaccard\nASV-level" ...
-# $ NEW_newfacet_x: Ord.factor w/ 4 levels "Original data\nJaccard\nASV-level"<..: 1 1 1 1 1 1 1 1 1 1 ...
 
+# copy these objects to combine with earlier trajectory plot data for all minesites
+traj_data.WorsleyExclSouthern <- traj_data
+pred_models_boot.WorsleyExclSouthern <- pred_models_boot
+href_lines.WorsleyExclSouthern <- href_lines
+anno_data.WorsleyExclSouthern <- anno_data
 
 
 
 str(traj_data)
-unique(traj_data$study) #  "South32"
+
+
+unique(traj_data$study) # "South32\n(exclude southernmost)"
+
+study_names <- c(
+  #Alcoa="Huntly",
+  #`Iluka-Eneabba`="Eneabba",
+  `South32\n(exclude southernmost)`="Worsley\n(excl. southern)"
+)
+
+facet_x_names <- c(
+  `Original data\nBray-Curtis\nASV-level`="Original data\nBray-Curtis",
+  `Corrected data\nBray-Curtis\nASV-level`="Corrected data\nBray-Curtis"
+)
+
+
+p <- ggplot(data=traj_data, aes(x=group, y=similarity)) +
+  geom_line(data=pred_models_boot, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
+  geom_hline(data = href_lines, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
+  
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
+  
+  theme_bw() +
+  geom_text(data=anno_data, aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +
+  scale_x_discrete(drop=FALSE, expand = c(0.05,0.05),
+                   labels = x_labels) +
+  theme(axis.text.x  = element_text(angle=90,hjust=1, vjust=0.5), # 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        #axis.ticks.x = element_line(linetype = 0)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
+  ) +
+  labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
+  facet_grid(rows = vars(study), cols = vars(NEW_newfacet_x), scales = "fixed", labeller = labeller(study = study_names, facet_x = facet_x_names) ) # study_labeller   as_labeller(study_names)
+
+p
+
+
+ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--South32Worsley-Excl-Southern--ASV-Bray-Filtered-vs-Filtered-Corrected-with-Preds.tiff"), width = 10, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+p.traj.worsleyExclsouthern <- p
+
+
+## combine trajectory plots: earlier Huntly, Eneabba, Worsley + Worsley (excl. southern)
+
+identical( names(traj_data.Hun_Ene_Wors), names(traj_data.WorsleyExclSouthern)) # TRUE
+identical( names(pred_models_boot.Hun_Ene_Wors), names(pred_models_boot.WorsleyExclSouthern)) # TRUE
+identical( names(href_lines.Hun_Ene_Wors), names(href_lines.WorsleyExclSouthern)) # FALSE
+identical( names(anno_data.Hun_Ene_Wors), names(anno_data.WorsleyExclSouthern)) # TRUE
+
+names(href_lines.Hun_Ene_Wors)
+names(href_lines.WorsleyExclSouthern)
+#use these cols:
+href_lines.Hun_Ene_Wors[ ,c("study", "NEW_newfacet_x", "similarity")]
+
+
+str(traj_data.Hun_Ene_Wors)
+str(traj_data.WorsleyExclSouthern)
+str(pred_models_boot.Hun_Ene_Wors)
+str(href_lines.Hun_Ene_Wors)
+str(anno_data.Hun_Ene_Wors)
+
+traj_data.join <- rbind(traj_data.Hun_Ene_Wors, traj_data.WorsleyExclSouthern)
+pred_models_boot.join <- rbind(pred_models_boot.Hun_Ene_Wors, pred_models_boot.WorsleyExclSouthern)
+href_lines.join <- rbind(href_lines.Hun_Ene_Wors[ ,c("study", "NEW_newfacet_x", "similarity")], href_lines.WorsleyExclSouthern[ ,c("study", "NEW_newfacet_x", "similarity")])
+anno_data.join <- rbind(anno_data.Hun_Ene_Wors, anno_data.WorsleyExclSouthern)
+
+unique(traj_data.join$NEW_newfacet_x) # Original data\nBray-Curtis\nASV-level < Corrected data\nBray-Curtis\nASV-level
+
+traj_data.join$NEW_newfacet_x <- factor(traj_data.join$NEW_newfacet_x, levels = c("Original data\nBray-Curtis\nASV-level", "Corrected data\nBray-Curtis\nASV-level"), labels = c("Original data\nBray-Curtis", "Corrected data\nBray-Curtis"), ordered = TRUE)
+pred_models_boot.join$NEW_newfacet_x <- factor(pred_models_boot.join$NEW_newfacet_x, levels = c("Original data\nBray-Curtis\nASV-level", "Corrected data\nBray-Curtis\nASV-level"), labels = c("Original data\nBray-Curtis", "Corrected data\nBray-Curtis"), ordered = TRUE)
+href_lines.join$NEW_newfacet_x <- factor(href_lines.join$NEW_newfacet_x, levels = c("Original data\nBray-Curtis\nASV-level", "Corrected data\nBray-Curtis\nASV-level"), labels = c("Original data\nBray-Curtis", "Corrected data\nBray-Curtis"), ordered = TRUE)
+anno_data.join$NEW_newfacet_x <- factor(anno_data.join$NEW_newfacet_x, levels = c("Original data\nBray-Curtis\nASV-level", "Corrected data\nBray-Curtis\nASV-level"), labels = c("Original data\nBray-Curtis", "Corrected data\nBray-Curtis"), ordered = TRUE)
+
+
+
+study_names <- c(
+  Alcoa="Huntly",
+  `Iluka-Eneabba`="Eneabba",
+  South32="Worsley",
+  `South32\n(exclude southernmost)`="Worsley\n(excl. southern)"
+)
+
+# facet_x_names <- c(
+#   `Original data\nBray-Curtis\nASV-level`="Original data\nBray-Curtis",
+#   `Corrected data\nBray-Curtis\nASV-level`="Corrected data\nBray-Curtis"
+# )
+
+
+p <- ggplot(data=traj_data.join, aes(x=group, y=similarity)) +
+  geom_line(data=pred_models_boot.join, aes(  x=group, y=similarity, group = boot_no ), colour = "#e34a33", alpha = 0.02) + # "red"
+  geom_hline(data = href_lines.join, aes(yintercept = similarity),  color= "#2c7fb8", linetype="longdash") + # "blue"
+  
+  geom_jitter(size=0.5,width = 0.5, alpha=0.6, color = "darkgrey") + # , color = "darkgrey"
+  geom_boxplot(outlier.shape = NA, width = 2.5 , fill=NA) +
+  
+  theme_bw() +
+  geom_text( data=anno_data.join,  aes(x=group, y=similarity, label=sig_letter),nudge_y = 2, size=2.75) +  #
+  scale_x_discrete(drop=FALSE, expand = c(0.05,0.05),
+                   labels = x_labels) +
+  theme(axis.text.x  = element_text(angle=90,hjust=1, vjust=0.5), # 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        #axis.ticks.x = element_line(linetype = 0)
+        axis.ticks.x = element_line(linetype = x_ticks),
+        strip.text.x = element_text(size = rel(1.1)),
+        strip.text.y = element_text(size = rel(1.1)),
+        strip.background = element_blank()
+  ) +
+  labs(x = "Rehabilitation age (years)", y = "Similarity to Reference (%)") +
+  facet_grid(rows = vars(study), cols = vars(NEW_newfacet_x), scales = "fixed", labeller = labeller(study = study_names) ) # , facet_x = facet_x_names
+
+p
+
+
+ggsave(plot=p, filename = paste0(workdir,"/plots/","Restoration-trajectories--South32Worsley-Excl-Southern--ASV-Bray-Filtered-vs-Filtered-Corrected-with-Preds.tiff"), width = 12, height = 20, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+# or with (a)
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.965,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Restoration-trajectories--South32Worsley-Excl-Southern--ASV-Bray-Filtered-vs-Filtered-Corrected-with-Preds--a.tiff"), width = 12, height = 20, units = "cm", res = 600, compression = "lzw",type="cairo")
+
+
+
+
+
+
+
+
+unique(traj_data$study) #  "South32\n(exclude southernmost)"
 unique(traj_data$group) # use "ref" only
 unique(traj_data$NEW_newfacet_x)
-# [1] Original data\nJaccard\nASV-level      Corrected data\nJaccard\nASV-level     Original data\nBray-Curtis\nASV-level 
-# [4] Corrected data\nBray-Curtis\nASV-level
-# 4 Levels: Original data\nJaccard\nASV-level < Corrected data\nJaccard\nASV-level < ... < Corrected data\nBray-Curtis\nASV-level
+# Original data\nBray-Curtis\nASV-level  Corrected data\nBray-Curtis\nASV-level
 
 ## study
-sel <- which(traj_data$study == "South32")
-
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Original data\nJaccard\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 18.03   25.34   27.60   26.60   28.77   31.25
-
-subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Corrected data\nJaccard\nASV-level")
-summary(traj_data$similarity[sel[subsel]])
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 18.03   25.34   27.60   26.60   28.77   31.25
+sel <- which(traj_data$study == "South32\n(exclude southernmost)")
 
 subsel <- which(traj_data$group[sel] == "Ref" & traj_data$NEW_newfacet_x[sel] == "Original data\nBray-Curtis\nASV-level")
 summary(traj_data$similarity[sel[subsel]])
@@ -29032,91 +29064,60 @@ summary(traj_data$similarity[sel[subsel]])
 # 25.62   36.02   38.21   38.23   42.93   46.11 
 
 
-str(pred_models_boot)
-# 'data.frame':	7600 obs. of  10 variables:
-#   $ study                  : chr  "South32" "South32" "South32" "South32" ...
-# $ NEW_newfacet_x         : Ord.factor w/ 4 levels "Original data\nJaccard\nASV-level"<..: 1 1 1 1 1 1 1 1 1 1 ...
-# $ study_and_metric       : chr  "South32__Original data\nJaccard\nASV-level" "South32__Original data\nJaccard\nASV-level" "South32__Original data\nJaccard\nASV-level" "South32__Original data\nJaccard\nASV-level" ...
-# $ group                  : Ord.factor w/ 47 levels "0"<"1"<"2"<"3"<..: 3 9 13 15 18 21 24 29 31 32 ...
-# $ group_num              : num  2 8 12 14 17 20 23 28 30 31 ...
-# $ similarity             : num  15 18.3 19.2 19.6 20.1 ...
-# $ boot_no                : int  1 1 1 1 1 1 1 1 1 1 ...
-# $ ref_median             : num  25.7 25.7 25.7 25.7 25.7 ...
-# $ pred_time_to_ref_median: num  192 192 192 192 192 192 192 192 192 192 ...
-# $ pred_type              : chr  "logarithmic" "logarithmic" "logarithmic" "logarithmic" ...
 
 unique(pred_models_boot$study_and_metric)
-# [1] "South32__Original data\nJaccard\nASV-level"      "South32__Corrected data\nJaccard\nASV-level"    
-# [3] "South32__Original data\nBray-Curtis\nASV-level"  "South32__Corrected data\nBray-Curtis\nASV-level"
+# [1] "South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level" 
+# [2] "South32\n(exclude southernmost)__Corrected data\nBray-Curtis\nASV-level"
 
 pred_models_boot$study_and_metric <- factor(pred_models_boot$study_and_metric,
                                             levels = c(
-                                              "South32__Original data\nJaccard\nASV-level"    ,  "South32__Corrected data\nJaccard\nASV-level"  ,  
-                                              "South32__Original data\nBray-Curtis\nASV-level" , "South32__Corrected data\nBray-Curtis\nASV-level"
-                                              ), ordered = TRUE)
+                                              "South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level" ,
+                                              "South32\n(exclude southernmost)__Corrected data\nBray-Curtis\nASV-level"
+                                            ), ordered = TRUE)
 
-dim(pred_models_boot) # 7600    10
+dim(pred_models_boot) # 3600    10
 
-dat.sum <- pred_models_boot
-head(dat.sum)
 
-for (i in 1:length(levels(dat.sum$study_and_metric))) {
+
+df <- data.frame(study_and_metric = rep(c(
+  "South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level" ,
+  "South32\n(exclude southernmost)__Corrected data\nBray-Curtis\nASV-level"
+),each=100),
+boot_no = rep(1:100, times=2),
+pred_time_to_ref_median=NA)
+
+for (i in 1:dim(df)[1]) {
   #i<-1
-  this_study_and_metric <- levels(dat.sum$study_and_metric)[i]
-  sel <- which(dat.sum$study_and_metric == this_study_and_metric)
-  #unique(dat.sum$ref_median[sel])
-  temp <- dat.sum$pred_time_to_ref_median[sel]
-  #quantile(temp, probs = c(0.05, 0.25, 0.5, 0.75, 0.95), na.rm = TRUE)
-  #hist(temp)
-  res <- quantile(temp, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
-  names(res)
-  #"5%"  "50%" "95%"
-  #print(paste0(this_study_and_metric))
-  print(paste0(this_study_and_metric,": ",res["50%"]," (",res["5%"],", ",res["95%"]," yr)"))
+  this_study_and_metric <- df$study_and_metric[i]
+  #this_measure <- df$facet_x[i]
+  this_boot <- df$boot_no[i]
+  sel <- which(pred_models_boot$study_and_metric == this_study_and_metric & pred_models_boot$boot_no == this_boot)
+  #pred_models_boot[sel, ]
+  df$pred_time_to_ref_median[i] <- unique(pred_models_boot$pred_time_to_ref_median[sel])
+  print(paste0("completed study and metric: ", this_study_and_metric," ; boot_no: ",this_boot," ; i = ",i))
 }
-# [1] "South32__Original data\nJaccard\nASV-level: 119.5 (52.9, 500 yr)"
-# [1] "South32__Corrected data\nJaccard\nASV-level: 137.5 (54.9, 500 yr)"
-# [1] "South32__Original data\nBray-Curtis\nASV-level: 80 (49.9, 166.1 yr)"
-# [1] "South32__Corrected data\nBray-Curtis\nASV-level: 81 (51.95, 163.15 yr)"
 
 
-levels( pred_models_boot$NEW_newfacet_x )
-# [1] "Original data\nJaccard\nASV-level"      "Corrected data\nJaccard\nASV-level"     "Original data\nBray-Curtis\nASV-level" 
-# [4] "Corrected data\nBray-Curtis\nASV-level"
-
-
+df.temp <- df
 
 ## plot time to target
 
-names(pred_models_boot)
-# [1] "study"                   "facet_x"                 "study_and_metric"        "group"                   "group_num"              
-# [6] "similarity"              "boot_no"                 "ref_median"              "pred_time_to_ref_median" "pred_type"
+df$study <- "Worsley (filtered)"
+df$NEW_newfacet_x <- NA
 
+sel <- grep(pattern = "Original", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Filtered data\nBray-Curtis"
 
+sel <- grep(pattern = "Corrected", x = df$study_and_metric)
+df$NEW_newfacet_x[sel] <- "Filtered & corrected\ndata; Bray-Curtis"
 
-df <- pred_models_boot
-unique( df$NEW_newfacet_x )
-# [1] Corrected data\nJaccard\nASV-level     Corrected data\nBray-Curtis\nASV-level
-# Levels: Corrected data\nJaccard\nASV-level < Corrected data\nBray-Curtis\nASV-level
-
-
-# unique( df$study ) # "Alcoa"         "Iluka-Eneabba" "South32"  
-# df$study <- factor(df$study, levels = c("Alcoa", "Iluka-Eneabba", "South32"  ),
-#                    labels = c("Huntly", "Eneabba", "Worsley"), ordered = TRUE)
-
-
-df$NEW_newfacet_x <- factor(df$NEW_newfacet_x, 
-                            levels = c("Original data\nJaccard\nASV-level",
-                                       "Corrected data\nJaccard\nASV-level",
-                                       "Original data\nBray-Curtis\nASV-level",
-                                       "Corrected data\nBray-Curtis\nASV-level"),
-                            labels = c("Filtered data\nJaccard",
-                                       "Filtered & corrected\ndata; Jaccard",
-                                       "Filtered data\nBray-Curtis",
-                                       "Filtered & corrected\ndata; Bray-Curtis"),
+df$NEW_newfacet_x <- factor(df$NEW_newfacet_x,
+                            levels = c(
+                              "Filtered data\nBray-Curtis",
+                              "Filtered & corrected\ndata; Bray-Curtis"),
                             ordered = TRUE)
 
-study_name <- c(South32="Worsley (filtered)")
+#study_name <- c(South32="Worsley (filtered)")
 
 p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, color = NEW_newfacet_x
   geom_boxplot() +
@@ -29126,16 +29127,209 @@ p <- ggplot(data=df, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, colo
     axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
-    
+
     legend.key.height = unit(30, "pt")
     #legend.margin = margin(t = 20,r = 0,b = 0,l = 20,"pt")
   ) +
-  labs(x = NULL, y = "Predicted time to reach target (yr)") + 
-  facet_wrap(facets = vars(study), scales = "free_y", labeller = labeller(study=study_name))
+  labs(x = NULL, y = "Predicted time to reach target (yr)") +
+  facet_wrap(facets = vars(study), scales = "free_y") # , labeller = labeller(study=study_name)
 p
 
 ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--South32--ASV-Jaccard-Bray-SACorrected-ExclFarSouthSites.tiff"), width = 6.5, height = 9, units = "cm", dpi = 600, compression = "lzw",type="cairo")
 
+
+pdata.Worsleyfiltered_orig_vs_SAcorrected <- p
+
+
+## record median, 2.5th, 97.5th percentile of recovery time predictions
+## i.e. determine 95% confidence interval from the bootstrap estimates, from values between the 2.5th percentile and 97.5th percentile
+
+unique(df$study_and_metric) 
+# [1]  "South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level" 
+# [2] "South32\n(exclude southernmost)__Corrected data\nBray-Curtis\nASV-level"
+
+## "South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level"
+sel1 <- which(df$study_and_metric == "South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel1]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel1])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 44 (37.475, 60), n = 100"
+
+## "South32\n(exclude southernmost)__Corrected data\nBray-Curtis\nASV-level"
+sel2 <- which(df$study_and_metric == "South32\n(exclude southernmost)__Corrected data\nBray-Curtis\nASV-level") # qty 100
+temp <- df$pred_time_to_ref_median[sel2]
+res <- quantile(temp, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+names(res) # "2.5%"  "50%"   "97.5%"
+print(paste0(unique(df$study_and_metric[sel2])," - Recovery time: median (2.5th, 97.5th percentile)] : ",res["50%"]," (",res["2.5%"],", ",res["97.5%"],"), n = ",length(temp)))
+# "South32\n(exclude southernmost)__Corrected data\nBray-Curtis\nASV-level - Recovery time: median (2.5th, 97.5th percentile)] : 43.5 (36.475, 60.575), n = 100"
+
+## 95% prediction intervals for difference??
+diff <- data.frame(original=df$pred_time_to_ref_median[sel1], corrected=df$pred_time_to_ref_median[sel2])
+diff$diff <- diff$original - diff$corrected
+quantile(diff$diff, probs = c(0.025, 0.975), na.rm = TRUE)
+# 2.5%  97.5% 
+# -9.000  8.525 
+
+
+## combine with previous plot
+
+pdata.orig_vs_SAcorrected$data
+
+names(pdata.orig_vs_SAcorrected$data)
+# [1] "study_and_metric"        "boot_no"                 "pred_time_to_ref_median" "NEW_newfacet_x"          "dist_measure"           
+# [6] "study" 
+head(pdata.orig_vs_SAcorrected$data)
+#                               study_and_metric boot_no pred_time_to_ref_median             NEW_newfacet_x dist_measure  study
+# 1 Alcoa__Original data\nBray-Curtis\nASV-level       1                      44 Original data\nBray-Curtis           NA Huntly
+# 2 Alcoa__Original data\nBray-Curtis\nASV-level       2                      42 Original data\nBray-Curtis           NA Huntly
+# 3 Alcoa__Original data\nBray-Curtis\nASV-level       3                      48 Original data\nBray-Curtis           NA Huntly
+# 4 Alcoa__Original data\nBray-Curtis\nASV-level       4                      43 Original data\nBray-Curtis           NA Huntly
+# 5 Alcoa__Original data\nBray-Curtis\nASV-level       5                      45 Original data\nBray-Curtis           NA Huntly
+# 6 Alcoa__Original data\nBray-Curtis\nASV-level       6                      45 Original data\nBray-Curtis           NA Huntly
+str(pdata.orig_vs_SAcorrected$data)
+# convert to characters
+
+X1 <- pdata.orig_vs_SAcorrected$data
+X1[ ,c("NEW_newfacet_x","study")] <- lapply(X1[ ,c("NEW_newfacet_x","study")],FUN = as.character)
+
+names(pdata.Worsleyfiltered_orig_vs_SAcorrected$data)
+# [1] "study_and_metric"        "boot_no"                 "pred_time_to_ref_median" "study"                   "NEW_newfacet_x" 
+head(pdata.Worsleyfiltered_orig_vs_SAcorrected$data)
+#                                                         study_and_metric boot_no pred_time_to_ref_median              study
+# 1 South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level       1                      46 Worsley (filtered)
+# 2 South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level       2                      53 Worsley (filtered)
+# 3 South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level       3                      43 Worsley (filtered)
+# 4 South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level       4                      43 Worsley (filtered)
+# 5 South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level       5                      48 Worsley (filtered)
+# 6 South32\n(exclude southernmost)__Original data\nBray-Curtis\nASV-level       6                      42 Worsley (filtered)
+# NEW_newfacet_x
+# 1 Filtered data\nBray-Curtis
+# 2 Filtered data\nBray-Curtis
+# 3 Filtered data\nBray-Curtis
+# 4 Filtered data\nBray-Curtis
+# 5 Filtered data\nBray-Curtis
+# 6 Filtered data\nBray-Curtis
+
+X2 <- pdata.Worsleyfiltered_orig_vs_SAcorrected$data
+str(X2)
+X2$NEW_newfacet_x <- as.character(X2$NEW_newfacet_x)
+
+
+newpdata <- rbind(X1[ ,c("study_and_metric", "boot_no","pred_time_to_ref_median", "NEW_newfacet_x","study")],
+                  X2[ ,c("study_and_metric", "boot_no","pred_time_to_ref_median", "NEW_newfacet_x","study")])
+
+unique(newpdata$NEW_newfacet_x)
+# [1] "Original data\nBray-Curtis"              "Corrected data\nBray-Curtis"             "Filtered data\nBray-Curtis"             
+# [4] "Filtered & corrected\ndata; Bray-Curtis"
+
+newpdata$NEW_newfacet_x <- factor(newpdata$NEW_newfacet_x,
+                                  levels=c("Original data\nBray-Curtis",
+                                           "Corrected data\nBray-Curtis",
+                                           "Filtered data\nBray-Curtis" ,            
+                                           "Filtered & corrected\ndata; Bray-Curtis"),
+                                  ordered = TRUE)
+
+unique(newpdata$study) #  "Huntly"             "Eneabba"            "Worsley"            "Worsley (filtered)"
+newpdata$study <- factor(newpdata$study,
+                         levels=c("Huntly","Eneabba","Worsley","Worsley (filtered)"),
+                         labels=c("Huntly","Eneabba","Worsley","Worsley\n(excl. southern)"),
+                         ordered = TRUE)
+
+
+p <- ggplot(data=newpdata, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) + #, color = NEW_newfacet_x
+  geom_boxplot() +
+  theme_bw() +
+  #guides(color = guide_legend(title="Distance measure")) +
+  theme(
+    axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text.x = element_text(size = rel(1.1)),
+    strip.background = element_blank(),
+    
+    legend.key.height = unit(30, "pt")
+    #legend.margin = margin(t = 20,r = 0,b = 0,l = 20,"pt")
+  ) +
+  labs(x = NULL, y = "Predicted time to reach target (yr)") +
+  facet_wrap(facets = vars(study), scales = "free")
+p
+
+ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32--ASV-Bray-only-Original-SACorrected-facet-study.tiff"), width = 12, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+
+
+
+# Diff b/w Huntly Original vs Corrected
+# 1     4 
+# 
+# Diff b/w Eneabba Original vs Corrected
+# -1    11
+# 
+# Diff b/w Worsley Original vs Corrected
+# -49.150   4.525 
+# 
+# Diff b/w Worsley Filtered vs Filtered + Corrected
+# -9.000  8.525
+
+
+# add annotation
+annotation_df <- data.frame(
+  study = c("Huntly","Eneabba","Worsley","Worsley\n(excl. southern)"),
+  start=c("Original data\nBray-Curtis","Original data\nBray-Curtis","Original data\nBray-Curtis","Filtered data\nBray-Curtis"),
+  end = c("Corrected data\nBray-Curtis","Corrected data\nBray-Curtis","Corrected data\nBray-Curtis","Filtered & corrected\ndata; Bray-Curtis"),
+  y = c(53, 97, 230, 70),
+  label = c("\u0394 95% PI = [1, 4]", "\u0394 95% PI = [-1, 11]", "\u0394 95% PI = [-49, 5]","\u0394 95% PI = [-9, 9]"), stringsAsFactors = FALSE)
+
+str(annotation_df)
+# ensure no conflict in factor levels 
+annotation_df$study <- factor(annotation_df$study, levels = c("Huntly", "Eneabba", "Worsley", "Worsley\n(excl. southern)"), ordered = TRUE)
+annotation_df$start <- factor(annotation_df$start, levels = c("Original data\nBray-Curtis",
+                                                              "Corrected data\nBray-Curtis",
+                                                              "Filtered data\nBray-Curtis" ,            
+                                                              "Filtered & corrected\ndata; Bray-Curtis"), ordered = TRUE )
+annotation_df$end <- factor(annotation_df$end, levels = c("Original data\nBray-Curtis",
+                                                          "Corrected data\nBray-Curtis",
+                                                          "Filtered data\nBray-Curtis" ,            
+                                                          "Filtered & corrected\ndata; Bray-Curtis"), ordered = TRUE )
+
+blank_data <-  data.frame(study=c("Huntly","Eneabba","Worsley","Worsley\n(excl. southern)"),
+                          NEW_newfacet_x = c("Original data\nBray-Curtis","Original data\nBray-Curtis","Original data\nBray-Curtis","Filtered data\nBray-Curtis"),
+                          pred_time_to_ref_median = c(53+1.4, 97+4.5, 230+15, 70+3))
+blank_data$study <- factor(blank_data$study, levels = c("Huntly","Eneabba","Worsley","Worsley\n(excl. southern)"), ordered = TRUE)
+
+p <- ggplot(data=newpdata, aes(x=NEW_newfacet_x, y=pred_time_to_ref_median)) +  # , color = facet_x
+  #geom_boxplot() +
+  #geom_boxplot(outlier.shape = NA, width = 2.5) +
+  #geom_jitter(size=0.5,width = 0.5, alpha=0.2, color = "darkgrey") +
+  geom_violin()+
+  geom_boxplot(width=0.12, outlier.shape = NA) +
+  theme_bw() +
+  # include blank plot data to help manually adjust ylimits to see geom_signif text
+  geom_blank(data = blank_data )+
+  
+  geom_signif(data = annotation_df, 
+              aes(xmin=start, xmax=end, annotations=label, y_position=y),
+              tip_length = 0, margin_top = 50, vjust = -0.5, textsize = 2.5, manual = TRUE) + #
+  facet_wrap(vars(study) , nrow=1, scales = "free") +
+  theme(
+    axis.text.x  = element_text(angle=60,hjust=1, vjust=1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text.x = element_text(size = rel(1.1)),
+    strip.background = element_blank()#,
+    
+  ) +
+  labs(x = NULL, y = "Predicted recovery time (yr)") #+
+  #ylim(20,110)
+
+p
+
+#ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32-South32-Filtered-ASV-Bray-only-Original-SACorrected-facet-study.tiff"), width = 18, height = 12, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+ggsave(plot=p, filename = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32-South32-Filtered-ASV-Bray-only-Original-SACorrected-facet-study.tiff"), width = 13, height = 8, units = "cm", dpi = 600, compression = "lzw",type="cairo")
+
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.965,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+dev.print(tiff, file = paste0(workdir,"/plots/","Predicted-time-to-target--Alcoa-Iluka-South32-South32-Filtered-ASV-Bray-only-Original-SACorrected-facet-study--b.tiff"), width = 13, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
 
@@ -29713,11 +29907,12 @@ p <- ggplot(df.melt, aes(x=group, y=value )) +
   labs(x = NULL, y = NULL)
 p
 
-grid.text(label = "(A)", x = unit(0.025, "npc") , y = unit(0.94,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(a)", x = unit(0.025, "npc") , y = unit(0.94,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Key-soil-variables-from-CCA-Huntly--A.tiff"), width = 18, height = 7, units = "cm", res=600, compression="lzw",type="cairo")
 dev.print(tiff, file = paste0(workdir,"/plots/","Key-soil-variables-from-CCA-Huntly.tiff"), width = 18, height = 7, units = "cm", res=600, compression="lzw",type="cairo")
 
 #-------------------------
+
 
 #### Constrained correspondence analysis (CCA) - Iluka-Eneabba
 #-------------------------
@@ -30264,7 +30459,7 @@ p <- ggplot(df.melt, aes(x=group, y=value )) +
   labs(x = NULL, y = NULL)
 p
 
-grid.text(label = "(B)", x = unit(0.03, "npc") , y = unit(0.94,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(b)", x = unit(0.03, "npc") , y = unit(0.94,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Key-soil-variables-from-CCA-Eneabba-B.tiff"), width = 10, height = 7, units = "cm", res=600, compression="lzw",type="cairo")
 dev.print(tiff, file = paste0(workdir,"/plots/","Key-soil-variables-from-CCA-Eneabba.tiff"), width = 10, height = 7, units = "cm", res=600, compression="lzw",type="cairo")
 
@@ -30810,7 +31005,7 @@ p <- ggplot(df.melt, aes(x=group, y=value )) +
   labs(x = NULL, y = NULL)
 p
 
-grid.text(label = "(C)", x = unit(0.03, "npc") , y = unit(0.94,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(c)", x = unit(0.03, "npc") , y = unit(0.94,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Key-soil-variables-from-CCA-Worsley-C.tiff"), width = 17, height = 7, units = "cm", res=600, compression="lzw",type="cairo")
 dev.print(tiff, file = paste0(workdir,"/plots/","Key-soil-variables-from-CCA-Worsley.tiff"), width = 17, height = 7, units = "cm", res=600, compression="lzw",type="cairo")
 
@@ -31068,7 +31263,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
   
 p
 
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Alpha-diversity--Alcoa--A.tiff"), width = 8, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -31263,7 +31458,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Alpha-diversity--Eneabba--B.tiff"), width = 8, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -31459,7 +31654,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(c)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Alpha-diversity--WorsleySouth32--C.tiff"), width = 8, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -31725,7 +31920,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Evenness-ASV-level--Alcoa--A.tiff"), width = 8, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -31922,7 +32117,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Evenness-ASV-level--Eneabba--B.tiff"), width = 8, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -32123,7 +32318,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(c)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Evenness-ASV-level--WorsleySouth32--C.tiff"), width = 8, height = 8, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -32370,7 +32565,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(A)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(a)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Phyla-Richness--Alcoa--A.tiff"), width = 8, height = 7, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -32511,7 +32706,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(B)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(b)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Phyla-Evenness--Alcoa--B.tiff"), width = 8, height = 7, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -32710,7 +32905,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(C)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(c)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Class-Richness--Alcoa--C.tiff"), width = 8, height = 7, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -32851,7 +33046,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(D)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(d)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Class-Evenness--Alcoa--D.tiff"), width = 8, height = 7, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -33032,7 +33227,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(E)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(e)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Order-Richness--Alcoa--E.tiff"), width = 8, height = 7, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
@@ -33157,7 +33352,7 @@ p <- ggplot(data=melt.out, aes(x=group, value)) +
 
 p
 
-grid.text(label = "(F)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
+grid.text(label = "(f)", x = unit(0.0375, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 dev.print(tiff, file = paste0(workdir,"/plots/","Order-Evenness--Alcoa--F.tiff"), width = 8, height = 7, units = "cm", res = 600, compression = "lzw",type="cairo")
 
 
