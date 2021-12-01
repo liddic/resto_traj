@@ -1357,26 +1357,15 @@ dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-ASV-Bray-Curtis-boxplots.
 
 
 ## ordination plot
-## NMDS + Bray-Curtis
+## PCoA + Bray-Curtis
 
 set.seed(123)
-ord <- ordinate(r1.ps, "NMDS", "bray")
+#ord <- ordinate(r1.ps, "NMDS", "bray")
+ord <- ordinate(r1.ps, "PCoA", "bray")
+
 
 ord
-# Call:
-#   metaMDS(comm = veganifyOTU(physeq), distance = distance) 
-# 
-# global Multidimensional Scaling using monoMDS
-# 
-# Data:     wisconsin(sqrt(veganifyOTU(physeq))) 
-# Distance: bray 
-# 
-# Dimensions: 2 
-# Stress:     0.1100346 
-# Stress type 1, weak ties
-# Two convergent solutions found after 20 tries
-# Scaling: centring, PC rotation, halfchange scaling 
-# Species: expanded scores based on ‘wisconsin(sqrt(veganifyOTU(physeq)))’ 
+ 
 
 str(r1.ps@sam_data)
 names(sample_data(r1.ps))
@@ -1396,6 +1385,12 @@ r1.ps@sam_data$group <- factor( r1.ps@sam_data$group,
 p <- plot_ordination(r1.ps, ord, type="samples", color="group")
 p
 
+p$labels$x # "Axis.1   [20.2%]"
+x_lab <- "PCo1 (20.2%)"
+
+p$labels$y # "Axis.2   [9.3%]"
+y_lab <- "PCo2 (9.3%)"
+
 #temp <- r1.ps
 p_df <- p$data
 
@@ -1413,11 +1408,13 @@ p_df$group <- factor(p_df$group,
 cols <- cols.group.alcoa
 
 p <- #plot_ordination(temp, ord, type="samples", color="group") +
-  ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  #ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  ggplot(data = p_df, aes(x = Axis.1, y = Axis.2, color = group))+
   theme_bw()+
   geom_point()+
+  xlab(x_lab) + ylab(y_lab)+
   scale_color_manual(values = cols, name = "Rehab\nage") +
-  annotate(geom="text", x= -1.2, y= 1.3, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=1) +
+  #annotate(geom="text", x= -1.2, y= 1.3, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=1) +
   theme(
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank())
@@ -1426,8 +1423,8 @@ p
 #grid.text(label = "(a)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 grid.text(label = "(a)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
 
-dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-ASV-Bray-Curtis-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
-
+#dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-ASV-Bray-Curtis-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+dev.print(tiff, file = paste0(workdir,"/plots/","Alcoa-ASV-Bray-Curtis-PCoA-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
 
 
 str(p$data)
@@ -16291,26 +16288,14 @@ df_anno[["Iluka-Eneabba-Bray-ASV-withTree"]] <- anno
 
 
 ## ordination plot
-## NMDS + Bray-Curtis
+## PCoA + Bray-Curtis
 
 set.seed(123)
-ord <- ordinate(r1.ps, "NMDS", "bray")
+#ord <- ordinate(r1.ps, "NMDS", "bray")
+ord <- ordinate(r1.ps, "PCoA", "bray")
 
 ord
-# Call:
-#   metaMDS(comm = veganifyOTU(physeq), distance = distance) 
-# 
-# global Multidimensional Scaling using monoMDS
-# 
-# Data:     wisconsin(sqrt(veganifyOTU(physeq))) 
-# Distance: bray 
-# 
-# Dimensions: 2 
-# Stress:     0.1468231 
-# Stress type 1, weak ties
-# Two convergent solutions found after 20 tries
-# Scaling: centring, PC rotation, halfchange scaling 
-# Species: expanded scores based on ‘wisconsin(sqrt(veganifyOTU(physeq)))’ 
+
 
 str(r1.ps@sam_data)
 names(sample_data(r1.ps))
@@ -16328,6 +16313,12 @@ p <- plot_ordination(r1.ps, ord, type="samples", color="group")
 p
 
 str(p$data)
+
+p$labels$x # "Axis.1   [11%]"
+x_lab <- "PCo1 (11.0%)"
+
+p$labels$y # "Axis.2   [7.3%]"
+y_lab <- "PCo2 (7.3%)"
 
 
 p_df <- p$data
@@ -16347,11 +16338,13 @@ cols.group.iluka
 cols <- cols.group.iluka
 
 p <- #plot_ordination(temp, ord, type="samples", color="group") +
-  ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  #ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  ggplot(data = p_df, aes(x = Axis.1, y = Axis.2, color = group))+
   theme_bw()+
   geom_point()+
+  xlab(x_lab) + ylab(y_lab)+
   scale_color_manual(values = cols, name = "Rehab\nage") +
-  annotate(geom="text", x= 1.0, y= 0.7, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=1, vjust=1) +
+  #annotate(geom="text", x= 1.0, y= 0.7, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=1, vjust=1) +
   #xlab( paste0("PC1 (",percent_exp1,"%)") ) + ylab( paste0("PC2 (",percent_exp2,"%)") )+
   theme(
     panel.grid.major = element_blank(),
@@ -16361,8 +16354,8 @@ p
 #grid.text(label = "(c)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 grid.text(label = "(c)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
 
-dev.print(tiff, file = paste0(workdir,"/plots/","Iluka-Eneabba-Bray-ASV-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
-
+#dev.print(tiff, file = paste0(workdir,"/plots/","Iluka-Eneabba-Bray-ASV-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+dev.print(tiff, file = paste0(workdir,"/plots/","Iluka-Eneabba-Bray-ASV-PCoA-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
 
 
 
@@ -19996,34 +19989,7 @@ class(df_out$group) # "character"
 
 dim(df_out) # 105   5
 
-# ## exclude youngest rehab_age group
-# sel <- which(df_out$group == "2017") # qty 18
-# df_out <- df_out[-sel, ]
-# dim(df_out) # 126   5
-# 
-# unique(df_out$group) # "1996" "REF"  "2002" "2007" "1999" "2011" "2005" "1991"
-# 
-# ## also exclude the Ref site that was associated with the southernmost youngest sites
-# 
-# hist(r1.ps@sam_data$`Latitude [decimal degrees]`)
-# sel <- which(r1.ps@sam_data$`Latitude [decimal degrees]` > 32.95)
-# as(r1.ps@sam_data, "data.frame")[sel, c("Sample_ID","year.of.rehab.or.ref")  ] #
-# #                  Sample_ID year.of.rehab.or.ref
-# # X138402 102.100.100/138402                 2017
-# # X138404 102.100.100/138404                  REF
-# # X138406 102.100.100/138406                 2017
-# 
-# sel <- which(df_out$samp %in% c("X138402","X138404","X138406")) # qty 5
-# df_out[sel, ]
-# #        samp compare_with year_rehab similarity group
-# # 139 X138404      X138362        REF   28.89398   REF
-# # 140 X138404      X138366        REF   21.39426   REF
-# # 141 X138404      X138374        REF   32.50249   REF
-# # 142 X138404      X138376        REF   24.15654   REF
-# # 143 X138404      X138378        REF   25.63098   REF
-# 
-# df_out <- df_out[-sel, ]
-# dim(df_out) # 121   5
+
 
 table(df_out$group)
 # 1991 1996 1999 2002 2005 2007 2011 2017  REF 
@@ -20182,26 +20148,14 @@ df_anno[["South32-Bray-ASV-withTree-exclude-southernmost"]] <- anno
 
 
 ## ordination plot
-## NMDS + Bray-Curtis
+## PCoA + Bray-Curtis
 
 set.seed(123)
-ord <- ordinate(r1.ps, "NMDS", "bray")
+#ord <- ordinate(r1.ps, "NMDS", "bray")
+ord <- ordinate(r1.ps, "PCoA", "bray")
 
 ord
-# Call:
-#   metaMDS(comm = veganifyOTU(physeq), distance = distance) 
-# 
-# global Multidimensional Scaling using monoMDS
-# 
-# Data:     wisconsin(sqrt(veganifyOTU(physeq))) 
-# Distance: bray 
-# 
-# Dimensions: 2 
-# Stress:     0.1347151 
-# Stress type 1, weak ties
-# Two convergent solutions found after 20 tries
-# Scaling: centring, PC rotation, halfchange scaling 
-# Species: expanded scores based on ‘wisconsin(sqrt(veganifyOTU(physeq)))’ 
+
 
 str(r1.ps@sam_data)
 names(sample_data(r1.ps))
@@ -20217,6 +20171,13 @@ r1.ps@sam_data$group <- factor(r1.ps@sam_data$group,
 
 p <- plot_ordination(r1.ps, ord, type="samples", color="group")
 p
+
+p$labels$x # "Axis.1   [18.4%]"
+x_lab <- "PCo1 (18.4%)"
+
+p$labels$y # "Axis.2   [10%]"
+y_lab <- "PCo2 (10.0%)"
+
 
 str(p$data)
 
@@ -20237,11 +20198,13 @@ cols.group.south32
 cols <- cols.group.south32
 
 p <- #plot_ordination(temp, ord, type="samples", color="group") +
-  ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  #ggplot(data = p_df, aes(x = NMDS1, y = NMDS2, color = group))+
+  ggplot(data = p_df, aes(x = Axis.1, y = Axis.2, color = group))+
   theme_bw()+
   geom_point()+
+  xlab(x_lab) + ylab(y_lab)+
   scale_color_manual(values = cols, name = "Rehab\nage") +
-  annotate(geom="text", x= -0.7, y= -0.49, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=0) +
+  #annotate(geom="text", x= -0.7, y= -0.49, label = paste0("Stress = ",round(ord$stress,digits=4)),size = 3, hjust=0, vjust=0) +
   #xlab( paste0("PC1 (",percent_exp1,"%)") ) + ylab( paste0("PC2 (",percent_exp2,"%)") )+
   theme(
     panel.grid.major = element_blank(),
@@ -20250,8 +20213,8 @@ p
 
 #grid.text(label = "(e)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=12, fontface="bold") )
 grid.text(label = "(e)", x = unit(0.03, "npc") , y = unit(0.97,"npc"), gp=gpar(fontsize=15, fontface="bold") )
-dev.print(tiff, file = paste0(workdir,"/plots/","South32-Bray-ASV-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
-
+#dev.print(tiff, file = paste0(workdir,"/plots/","South32-Bray-ASV-NMDS-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
+dev.print(tiff, file = paste0(workdir,"/plots/","South32-Bray-ASV-PCoA-ordination.tiff"), width = 12.4, height = 10, units = "cm", res=600, compression="lzw", type = "cairo")
 
 
 
